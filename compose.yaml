@@ -1,0 +1,7 @@
+﻿services:
+  orderprocessing:
+    image: orderprocessing
+    build:
+      context: .
+      dockerfile: OrderProcessing/Dockerfile
+
