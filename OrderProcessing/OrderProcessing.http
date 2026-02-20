@@ -1,6 +1,25 @@
-@OrderProcessing_HostAddress = http://localhost:5203
+@OrderProcessing_HostAddress = http://localhost:8080
 
-GET {{OrderProcessing_HostAddress}}/weatherforecast/
-Accept: application/json
+### Create Product
+POST {{OrderProcessing_HostAddress}}/api/products
+Content-Type: application/json
 
-###
+{
+  "name": "Gaming Mouse",
+  "sku": "MSE-001",
+  "price": 49.99,
+  "initialStock": 20
+}
+
+### Create Order
+POST {{OrderProcessing_HostAddress}}/api/orders
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "productId": "00000000-0000-0000-0000-000000000000",
+      "quantity": 1
+    }
+  ]
+}

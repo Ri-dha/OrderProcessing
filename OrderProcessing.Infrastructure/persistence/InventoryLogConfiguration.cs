@@ -8,9 +8,12 @@ public class InventoryLogConfiguration : IEntityTypeConfiguration<InventoryLog>
 {
     public void Configure(EntityTypeBuilder<InventoryLog> builder)
     {
-        builder.HasKey(i => i.Id);
-        
-        // Save enum as readable string
-        builder.Property(i => i.Type).HasConversion<string>();
+        builder.HasKey(x => x.Id);
+
+        builder.Property(x => x.Type)
+            .HasConversion<string>()
+            .IsRequired();
+
+        builder.HasIndex(x => new { x.ProductId, x.Timestamp });
     }
 }

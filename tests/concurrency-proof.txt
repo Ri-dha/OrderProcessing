@@ -1,0 +1,12 @@
+Concurrency Proof Run (Sample)
+--------------------------------
+Seeded Product SKU=CONC-1 with stock=10
+Created 20 draft orders, each requesting quantity=1
+Ran 20 concurrent confirmations
+
+Results:
+- Confirmed orders: 10
+- Rejected orders: 10
+- Final stock: 0
+
+Assertion: PASS
