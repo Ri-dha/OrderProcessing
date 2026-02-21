@@ -25,6 +25,7 @@ builder.Host.UseWolverine(opts =>
     opts.PersistMessagesWithPostgresql(connectionString);
     opts.Policies.UseDurableLocalQueues();
     opts.UseEntityFrameworkCoreTransactions();
+    opts.Policies.AutoApplyTransactions();
     opts.Policies.OnException<DbUpdateConcurrencyException>().RetryTimes(5);
 });
 
