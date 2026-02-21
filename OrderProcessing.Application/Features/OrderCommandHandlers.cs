@@ -6,6 +6,7 @@ using OrderProcessing.Domain.entities;
 using OrderProcessing.Domain.enums;
 using OrderProcessing.Domain.errors;
 using OrderProcessing.Infrastructure.Persistence;
+using Wolverine;
 
 namespace OrderProcessing.Application.Features;
 
@@ -17,7 +18,6 @@ public class OrderCommandHandler
     {
         var product = new Product(command.Name, command.Sku, command.Price, command.InitialStock);
         db.Products.Add(product);
-        await db.SaveChangesAsync(ct);
         return new CreatedResponse(product.Id, "Product created.");
     }
 
@@ -33,8 +33,6 @@ public class OrderCommandHandler
             .ToList();
 
         db.Products.AddRange(products);
-        await db.SaveChangesAsync(ct);
-
         return new BulkCreatedResponse(products.Count, products.Select(x => x.Id).ToArray(), "Products created.");
     }
 
@@ -50,8 +48,6 @@ public class OrderCommandHandler
         }
 
         product.UpdateDetails(command.Name, command.Sku, command.Price, command.Stock, command.IsDeleted);
-        await db.SaveChangesAsync(ct);
-
         return new ProductResponse(product.Id, product.Name, product.Sku, product.Price, product.AvailableStock, product.IsDeleted);
     }
 
@@ -85,55 +81,39 @@ public class OrderCommandHandler
 
         var order = Order.Create(lines);
         db.Orders.Add(order);
-        await db.SaveChangesAsync(ct);
         return new CreatedResponse(order.Id, "Order created in DRAFT status.");
     }
 
-    public async Task<OperationResponse> Handle(ConfirmOrderCommand command, AppDbContext db, CancellationToken ct)
+    public async Task<(OperationResponse, OutgoingMessages)> Handle(ConfirmOrderCommand command, AppDbContext db, CancellationToken ct)
     {
-        const int maxRetries = 5;
+        var order = await db.Orders
+            .Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.Id == command.OrderId, ct);
 
-        for (var attempt = 1; attempt <= maxRetries; attempt++)
+        if (order is null) throw new DomainValidationException("Order not found.");
+
+        order.TransitionTo(OrderStatus.Confirmed);
+
+        var messages = new OutgoingMessages();
+
+        foreach (var item in order.Items)
         {
-            try
-            {
-                var order = await db.Orders
-                    .Include(o => o.Items)
-                    .FirstOrDefaultAsync(o => o.Id == command.OrderId, ct);
+            var product = await db.Products.FirstOrDefaultAsync(p => p.Id == item.ProductId, ct);
+            if (product is null) throw new DomainValidationException($"Product {item.ProductId} not found.");
 
-                if (order is null)
-                {
-                    throw new DomainValidationException("Order not found.");
-                }
-
-                order.TransitionTo(OrderStatus.Confirmed);
-
-                foreach (var item in order.Items)
-                {
-                    var product = await db.Products.FirstOrDefaultAsync(p => p.Id == item.ProductId, ct);
-                    if (product is null)
-                    {
-                        throw new DomainValidationException($"Product {item.ProductId} not found.");
-                    }
-
-                    product.ReserveStock(item.Quantity);
-                    db.InventoryLogs.Add(new InventoryLog(product.Id, order.Id, InventoryLogType.Reservation, item.Quantity));
-                }
-
-                await db.SaveChangesAsync(ct);
-                return new OperationResponse("Order confirmed and stock reserved.", order.Id, order.Status.ToString());
-            }
-            catch (DbUpdateConcurrencyException) when (attempt < maxRetries)
-            {
-                db.ChangeTracker.Clear();
-                await Task.Delay(40 * attempt, ct);
-            }
+            product.ReserveStock(item.Quantity);
+        
+           
+            messages.Add(new StockReservedEvent(product.Id, order.Id, item.Quantity));
         }
 
-        throw new DomainValidationException("Could not confirm order due to concurrent updates. Please retry.");
+        return (
+            new OperationResponse("Order confirmed and stock reserved.", order.Id, order.Status.ToString()), 
+            messages
+        );
     }
 
-    public async Task<OperationResponse> Handle(CancelOrderCommand command, AppDbContext db, CancellationToken ct)
+    public async Task<(OperationResponse, OutgoingMessages)> Handle(CancelOrderCommand command, AppDbContext db, CancellationToken ct)
     {
         var order = await db.Orders
             .Include(o => o.Items)
@@ -146,6 +126,8 @@ public class OrderCommandHandler
 
         if (order.Status == OrderStatus.Confirmed)
         {
+            var messages = new OutgoingMessages();
+
             foreach (var item in order.Items)
             {
                 var product = await db.Products.FirstOrDefaultAsync(p => p.Id == item.ProductId, ct);
@@ -155,13 +137,15 @@ public class OrderCommandHandler
                 }
 
                 product.ReleaseStock(item.Quantity);
-                db.InventoryLogs.Add(new InventoryLog(product.Id, order.Id, InventoryLogType.Release, item.Quantity));
+                messages.Add(new StockReleasedEvent(product.Id, order.Id, item.Quantity));
             }
+
+            order.TransitionTo(OrderStatus.Cancelled);
+            return (new OperationResponse("Order cancelled.", order.Id, order.Status.ToString()), messages);
         }
 
         order.TransitionTo(OrderStatus.Cancelled);
-        await db.SaveChangesAsync(ct);
-        return new OperationResponse("Order cancelled.", order.Id, order.Status.ToString());
+        return (new OperationResponse("Order cancelled.", order.Id, order.Status.ToString()), new OutgoingMessages());
     }
 
     public async Task<PaymentInitiationResponse> Handle(InitiatePaymentCommand command, AppDbContext db, CancellationToken ct)
@@ -189,9 +173,6 @@ public class OrderCommandHandler
 
         var token = PaymentVerificationToken.Create(order.Id, TimeSpan.FromMinutes(5));
         db.PaymentVerificationTokens.Add(token);
-
-        await db.SaveChangesAsync(ct);
-
         return new PaymentInitiationResponse(
             order.Id,
             order.Status.ToString(),
@@ -305,7 +286,7 @@ public class OrderCommandHandler
         return new VerifyPaymentResult(200, successResponse);
     }
 
-    public async Task<OperationResponse> Handle(StartFulfillmentCommand command, AppDbContext db, CancellationToken ct)
+    public async Task<(OperationResponse, OutgoingMessages)> Handle(StartFulfillmentCommand command, AppDbContext db, CancellationToken ct)
     {
         var order = await db.Orders
             .Include(o => o.Items)
@@ -317,14 +298,14 @@ public class OrderCommandHandler
         }
 
         order.TransitionTo(OrderStatus.Fulfilling);
+        var messages = new OutgoingMessages();
 
         foreach (var item in order.Items)
         {
-            db.InventoryLogs.Add(new InventoryLog(item.ProductId, order.Id, InventoryLogType.Deduction, item.Quantity));
+            messages.Add(new StockDeductedEvent(item.ProductId, order.Id, item.Quantity));
         }
 
-        await db.SaveChangesAsync(ct);
-        return new OperationResponse("Order is now fulfilling.", order.Id, order.Status.ToString());
+        return (new OperationResponse("Order is now fulfilling.", order.Id, order.Status.ToString()), messages);
     }
 
     public async Task<OperationResponse> Handle(ShipOrderCommand command, AppDbContext db, CancellationToken ct)
@@ -337,8 +318,6 @@ public class OrderCommandHandler
 
         order.TransitionTo(OrderStatus.Shipped);
         order.SetTrackingNumber(command.TrackingNumber);
-        await db.SaveChangesAsync(ct);
-
         return new OperationResponse("Order shipped.", order.Id, order.Status.ToString());
     }
 
@@ -351,8 +330,6 @@ public class OrderCommandHandler
         }
 
         order.TransitionTo(OrderStatus.Delivered);
-        await db.SaveChangesAsync(ct);
-
         return new OperationResponse("Order delivered.", order.Id, order.Status.ToString());
     }
 
@@ -365,12 +342,10 @@ public class OrderCommandHandler
         }
 
         order.TransitionTo(OrderStatus.RefundRequested);
-        await db.SaveChangesAsync(ct);
-
         return new OperationResponse("Refund requested.", order.Id, order.Status.ToString());
     }
 
-    public async Task<OperationResponse> Handle(CompleteRefundCommand command, AppDbContext db, CancellationToken ct)
+    public async Task<(OperationResponse, OutgoingMessages)> Handle(CompleteRefundCommand command, AppDbContext db, CancellationToken ct)
     {
         var order = await db.Orders
             .Include(o => o.Items)
@@ -389,6 +364,7 @@ public class OrderCommandHandler
 
         order.TransitionTo(OrderStatus.Refunded);
         payment.MarkRefunded();
+        var messages = new OutgoingMessages();
 
         foreach (var item in order.Items)
         {
@@ -399,11 +375,10 @@ public class OrderCommandHandler
             }
 
             product.Restock(item.Quantity);
-            db.InventoryLogs.Add(new InventoryLog(product.Id, order.Id, InventoryLogType.Restock, item.Quantity));
+            messages.Add(new StockRestockedEvent(product.Id, order.Id, item.Quantity));
         }
 
-        await db.SaveChangesAsync(ct);
-        return new OperationResponse("Refund completed.", order.Id, order.Status.ToString());
+        return (new OperationResponse("Refund completed.", order.Id, order.Status.ToString()), messages);
     }
 
     public async Task Handle(CleanupIdempotencyRecordsCommand _, AppDbContext db, CancellationToken ct)
@@ -423,7 +398,6 @@ public class OrderCommandHandler
 
         db.IdempotencyRecords.RemoveRange(staleRecords);
         db.PaymentVerificationTokens.RemoveRange(staleTokens);
-        await db.SaveChangesAsync(ct);
     }
 
     private static void ValidateCardInput(string cardNumber, string expiryDate, string cvc)

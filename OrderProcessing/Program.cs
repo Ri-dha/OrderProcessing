@@ -6,6 +6,7 @@ using OrderProcessing.Infrastructure.Persistence;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
+using Wolverine.Http;
 using Wolverine.Postgresql;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,7 +17,7 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
-builder.Services.AddControllers();
+builder.Services.AddWolverineHttp();
 
 builder.Host.UseWolverine(opts =>
 {
@@ -46,7 +47,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.MapControllers();
+app.MapWolverineEndpoints(opts =>
+{
+    opts.UseDataAnnotationsValidationProblemDetailMiddleware();
+});
 app.Run();
 
 public partial class Program;

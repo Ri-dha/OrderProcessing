@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using OrderProcessing.Application.Features;
+using OrderProcessing.Application.Features.Contracts;
 using OrderProcessing.Features;
 using Xunit;
 

@@ -27,3 +27,8 @@ public sealed record RequestRefundCommand(Guid OrderId);
 public sealed record CompleteRefundCommand(Guid OrderId);
 
 public sealed record CleanupIdempotencyRecordsCommand;
+
+public record StockReservedEvent(Guid ProductId, Guid OrderId, int Quantity);
+public record StockReleasedEvent(Guid ProductId, Guid OrderId, int Quantity);
+public record StockRestockedEvent(Guid ProductId, Guid OrderId, int Quantity);
+public record StockDeductedEvent(Guid ProductId, Guid OrderId, int Quantity);
