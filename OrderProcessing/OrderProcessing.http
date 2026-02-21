@@ -1,6 +1,6 @@
-@OrderProcessing_HostAddress = http://localhost:8080
+@OrderProcessing_HostAddress = http://localhost:5203
 
-### Create Product
+### Create Single Product
 POST {{OrderProcessing_HostAddress}}/api/products
 Content-Type: application/json
 
@@ -11,7 +11,21 @@ Content-Type: application/json
   "initialStock": 20
 }
 
-### Create Order
+### Create Many Products
+POST {{OrderProcessing_HostAddress}}/api/products/bulk
+Content-Type: application/json
+
+{
+  "products": [
+    { "name": "Keyboard", "sku": "KB-001", "price": 99.99, "initialStock": 10 },
+    { "name": "Headset", "sku": "HS-001", "price": 79.99, "initialStock": 15 }
+  ]
+}
+
+### Get Products
+GET {{OrderProcessing_HostAddress}}/api/products
+
+### Create Order (replace productId)
 POST {{OrderProcessing_HostAddress}}/api/orders
 Content-Type: application/json
 
@@ -22,4 +36,35 @@ Content-Type: application/json
       "quantity": 1
     }
   ]
+}
+
+### Initiate Payment (replace order id)
+POST {{OrderProcessing_HostAddress}}/api/orders/00000000-0000-0000-0000-000000000000/pay/initiate
+Content-Type: application/json
+
+{
+  "cardNumber": "4111111111111111",
+  "expiryDate": "12/30",
+  "cvc": "123"
+}
+
+### Verify Payment (replace order id and token)
+POST {{OrderProcessing_HostAddress}}/api/orders/00000000-0000-0000-0000-000000000000/pay/verify
+Content-Type: application/json
+
+{
+  "verificationToken": "REPLACE_TOKEN",
+  "idempotencyKey": "pay-verify-1"
+}
+
+### Update Product (replace product id)
+PUT {{OrderProcessing_HostAddress}}/api/products/00000000-0000-0000-0000-000000000000
+Content-Type: application/json
+
+{
+  "name": "Gaming Mouse Pro",
+  "sku": "MSE-001-PRO",
+  "price": 59.99,
+  "stock": 25,
+  "isDeleted": false
 }

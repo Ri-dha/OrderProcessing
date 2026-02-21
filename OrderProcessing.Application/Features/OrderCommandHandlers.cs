@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -6,7 +7,7 @@ using OrderProcessing.Domain.enums;
 using OrderProcessing.Domain.errors;
 using OrderProcessing.Infrastructure.Persistence;
 
-namespace OrderProcessing.Features;
+namespace OrderProcessing.Application.Features;
 
 public class OrderCommandHandler
 {
@@ -18,6 +19,40 @@ public class OrderCommandHandler
         db.Products.Add(product);
         await db.SaveChangesAsync(ct);
         return new CreatedResponse(product.Id, "Product created.");
+    }
+
+    public async Task<BulkCreatedResponse> Handle(CreateProductsBulkCommand command, AppDbContext db, CancellationToken ct)
+    {
+        if (command.Products.Count == 0)
+        {
+            throw new DomainValidationException("At least one product is required.");
+        }
+
+        var products = command.Products
+            .Select(x => new Product(x.Name, x.Sku, x.Price, x.InitialStock))
+            .ToList();
+
+        db.Products.AddRange(products);
+        await db.SaveChangesAsync(ct);
+
+        return new BulkCreatedResponse(products.Count, products.Select(x => x.Id).ToArray(), "Products created.");
+    }
+
+    public async Task<ProductResponse> Handle(UpdateProductCommand command, AppDbContext db, CancellationToken ct)
+    {
+        var product = await db.Products
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(x => x.Id == command.ProductId, ct);
+
+        if (product is null)
+        {
+            throw new DomainValidationException("Product not found.");
+        }
+
+        product.UpdateDetails(command.Name, command.Sku, command.Price, command.Stock, command.IsDeleted);
+        await db.SaveChangesAsync(ct);
+
+        return new ProductResponse(product.Id, product.Name, product.Sku, product.Price, product.AvailableStock, product.IsDeleted);
     }
 
     public async Task<CreatedResponse> Handle(CreateOrderCommand command, AppDbContext db, CancellationToken ct)
@@ -129,7 +164,43 @@ public class OrderCommandHandler
         return new OperationResponse("Order cancelled.", order.Id, order.Status.ToString());
     }
 
-    public async Task<(int StatusCode, PaymentResponse Response)> Handle(ProcessPaymentCommand command, AppDbContext db,
+    public async Task<PaymentInitiationResponse> Handle(InitiatePaymentCommand command, AppDbContext db, CancellationToken ct)
+    {
+        ValidateCardInput(command.CardNumber, command.ExpiryDate, command.Cvc);
+
+        var order = await db.Orders
+            .Include(x => x.Items)
+            .FirstOrDefaultAsync(x => x.Id == command.OrderId, ct);
+
+        if (order is null)
+        {
+            throw new DomainValidationException("Order not found.");
+        }
+
+        if (order.Status == OrderStatus.Confirmed)
+        {
+            order.TransitionTo(OrderStatus.PaymentPending);
+        }
+        else if (order.Status != OrderStatus.PaymentPending)
+        {
+            throw new DomainValidationException(
+                $"Cannot initiate payment. Current status is {order.Status}. Allowed status: Confirmed or PaymentPending.");
+        }
+
+        var token = PaymentVerificationToken.Create(order.Id, TimeSpan.FromMinutes(5));
+        db.PaymentVerificationTokens.Add(token);
+
+        await db.SaveChangesAsync(ct);
+
+        return new PaymentInitiationResponse(
+            order.Id,
+            order.Status.ToString(),
+            token.Token,
+            token.ExpiresAt,
+            "Payment initiated. Verify with the short-lived token.");
+    }
+
+    public async Task<VerifyPaymentResult> Handle(VerifyPaymentCommand command, AppDbContext db,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(command.IdempotencyKey))
@@ -144,8 +215,7 @@ public class OrderCommandHandler
         {
             if (existingByKey.OrderId != command.OrderId)
             {
-                throw new DomainValidationException(
-                    "Idempotency key has already been used for a different order.");
+                throw new DomainValidationException("Idempotency key has already been used for a different order.");
             }
 
             return await WaitForCompletedResponse(existingByKey.Key, db, ct);
@@ -165,8 +235,7 @@ public class OrderCommandHandler
 
             if (existing.OrderId != command.OrderId)
             {
-                throw new DomainValidationException(
-                    "Idempotency key has already been used for a different order.");
+                throw new DomainValidationException("Idempotency key has already been used for a different order.");
             }
 
             return await WaitForCompletedResponse(existing.Key, db, ct);
@@ -181,11 +250,34 @@ public class OrderCommandHandler
             throw new DomainValidationException("Order not found.");
         }
 
-        order.TransitionTo(OrderStatus.PaymentPending);
-        await db.SaveChangesAsync(ct);
+        if (order.Status != OrderStatus.PaymentPending)
+        {
+            throw new DomainValidationException(
+                $"Cannot verify payment. Current status is {order.Status}. Allowed status: PaymentPending.");
+        }
+
+        var token = await db.PaymentVerificationTokens
+            .FirstOrDefaultAsync(x => x.OrderId == command.OrderId && x.Token == command.VerificationToken, ct);
+
+        if (token is null)
+        {
+            throw new DomainValidationException("Invalid payment verification token.");
+        }
+
+        if (token.IsUsed())
+        {
+            throw new DomainValidationException("Payment verification token has already been used.");
+        }
+
+        if (token.IsExpired())
+        {
+            throw new DomainValidationException("Payment verification token has expired.");
+        }
 
         await Task.Delay(TimeSpan.FromSeconds(2), ct);
+
         var failed = Random.Shared.NextDouble() < 0.2d;
+        token.MarkUsed();
 
         if (failed)
         {
@@ -198,7 +290,7 @@ public class OrderCommandHandler
             record.Complete(402, JsonSerializer.Serialize(response, JsonOptions));
 
             await db.SaveChangesAsync(ct);
-            return (402, response);
+            return new VerifyPaymentResult(402, response);
         }
 
         order.TransitionTo(OrderStatus.Paid);
@@ -210,7 +302,7 @@ public class OrderCommandHandler
         record.Complete(200, JsonSerializer.Serialize(successResponse, JsonOptions));
 
         await db.SaveChangesAsync(ct);
-        return (200, successResponse);
+        return new VerifyPaymentResult(200, successResponse);
     }
 
     public async Task<OperationResponse> Handle(StartFulfillmentCommand command, AppDbContext db, CancellationToken ct)
@@ -320,14 +412,73 @@ public class OrderCommandHandler
         var staleRecords = await db.IdempotencyRecords
             .Where(x => x.CreatedAt < threshold)
             .ToListAsync(ct);
+        var staleTokens = await db.PaymentVerificationTokens
+            .Where(x => x.ExpiresAt < DateTime.UtcNow || x.UsedAt != null)
+            .ToListAsync(ct);
 
-        if (staleRecords.Count == 0)
+        if (staleRecords.Count == 0 && staleTokens.Count == 0)
         {
             return;
         }
 
         db.IdempotencyRecords.RemoveRange(staleRecords);
+        db.PaymentVerificationTokens.RemoveRange(staleTokens);
         await db.SaveChangesAsync(ct);
+    }
+
+    private static void ValidateCardInput(string cardNumber, string expiryDate, string cvc)
+    {
+        var normalizedCard = new string(cardNumber.Where(char.IsDigit).ToArray());
+        if (normalizedCard.Length is < 13 or > 19)
+        {
+            throw new DomainValidationException("Card number must be between 13 and 19 digits.");
+        }
+
+        if (!IsLuhnValid(normalizedCard))
+        {
+            throw new DomainValidationException("Card number is invalid.");
+        }
+
+        if (!DateTime.TryParseExact(expiryDate, "MM/yy", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var exp))
+        {
+            throw new DomainValidationException("Expiry date must be in MM/yy format.");
+        }
+
+        var expMonthEnd = new DateTime(exp.Year, exp.Month, DateTime.DaysInMonth(exp.Year, exp.Month), 23, 59, 59,
+            DateTimeKind.Utc);
+        if (expMonthEnd < DateTime.UtcNow)
+        {
+            throw new DomainValidationException("Card has expired.");
+        }
+
+        if (string.IsNullOrWhiteSpace(cvc) || cvc.Length is < 3 or > 4 || !cvc.All(char.IsDigit))
+        {
+            throw new DomainValidationException("CVC must be 3 or 4 digits.");
+        }
+    }
+
+    private static bool IsLuhnValid(string digits)
+    {
+        var sum = 0;
+        var alternate = false;
+        for (var i = digits.Length - 1; i >= 0; i--)
+        {
+            var n = digits[i] - '0';
+            if (alternate)
+            {
+                n *= 2;
+                if (n > 9)
+                {
+                    n -= 9;
+                }
+            }
+
+            sum += n;
+            alternate = !alternate;
+        }
+
+        return sum % 10 == 0;
     }
 
     private static bool IsUniqueViolation(DbUpdateException ex)
@@ -340,7 +491,7 @@ public class OrderCommandHandler
         return false;
     }
 
-    private static async Task<(int StatusCode, PaymentResponse Response)> WaitForCompletedResponse(string key,
+    private static async Task<VerifyPaymentResult> WaitForCompletedResponse(string key,
         AppDbContext db, CancellationToken ct)
     {
         for (var i = 0; i < 100; i++)
@@ -354,7 +505,7 @@ public class OrderCommandHandler
                 var response = JsonSerializer.Deserialize<PaymentResponse>(record.ResponseBody!, JsonOptions)
                     ?? throw new DomainValidationException("Stored idempotency response is invalid.");
 
-                return (record.ResponseStatusCode!.Value, response);
+                return new VerifyPaymentResult(record.ResponseStatusCode!.Value, response);
             }
 
             await Task.Delay(100, ct);

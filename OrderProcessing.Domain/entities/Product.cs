@@ -49,6 +49,35 @@ public class Product : IEntity, IAuditableEntity, ISoftDeletable
         CreatedAt = DateTime.UtcNow;
     }
 
+    public void UpdateDetails(string name, string sku, decimal price, int stock, bool isDeleted)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new DomainValidationException("Product name is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(sku))
+        {
+            throw new DomainValidationException("Product SKU is required.");
+        }
+
+        if (price < 0)
+        {
+            throw new DomainValidationException("Product price cannot be negative.");
+        }
+
+        if (stock < 0)
+        {
+            throw new DomainValidationException("Product stock cannot be negative.");
+        }
+
+        Name = name.Trim();
+        Sku = sku.Trim();
+        Price = price;
+        AvailableStock = stock;
+        IsDeleted = isDeleted;
+    }
+
     public void ReserveStock(int quantity)
     {
         if (quantity <= 0)

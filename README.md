@@ -16,9 +16,13 @@ API base URL: `http://localhost:8080`
 
 ## Key Endpoints
 - `POST /api/products`
+- `POST /api/products/bulk`
+- `GET /api/products`
+- `PUT /api/products/{id}`
 - `POST /api/orders`
 - `POST /api/orders/{id}/confirm`
-- `POST /api/orders/{id}/pay` (requires `Idempotency-Key` header)
+- `POST /api/orders/{id}/pay/initiate`
+- `POST /api/orders/{id}/pay/verify`
 - `POST /api/orders/{id}/fulfill`
 - `POST /api/orders/{id}/ship`
 - `POST /api/orders/{id}/deliver`

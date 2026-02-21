@@ -7,7 +7,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\OrderProcessing.Application\OrderProcessing.Application.csproj" />
       <ProjectReference Include="..\OrderProcessing.Domain\OrderProcessing.Domain.csproj" />
     </ItemGroup>
 

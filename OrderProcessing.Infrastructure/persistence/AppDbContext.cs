@@ -11,6 +11,7 @@ public class AppDbContext : DbContext
     public DbSet<InventoryLog> InventoryLogs => Set<InventoryLog>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
+    public DbSet<PaymentVerificationToken> PaymentVerificationTokens => Set<PaymentVerificationToken>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {

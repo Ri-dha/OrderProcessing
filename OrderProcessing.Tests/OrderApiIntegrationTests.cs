@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using OrderProcessing.Application.Features;
 using OrderProcessing.Features;
 using Xunit;
 
@@ -19,12 +20,28 @@ public class OrderApiIntegrationTests : IClassFixture<WebApplicationFactory<Prog
     public async Task CreateConfirmCancelFlow_ShouldReturnSuccessCodes()
     {
         var product = await _client.PostAsJsonAsync("/api/products",
-            new CreateProductRequest("Keyboard", "KB-1", 50m, 3));
+            new CreateProductRequest
+            {
+                Name = "Keyboard",
+                Sku = "KB-1",
+                Price = 50m,
+                InitialStock = 3
+            });
         Assert.Equal(HttpStatusCode.OK, product.StatusCode);
         var createdProduct = await product.Content.ReadFromJsonAsync<CreatedResponse>();
 
         var orderCreate = await _client.PostAsJsonAsync("/api/orders",
-            new CreateOrderRequest([new CreateOrderItemRequest(createdProduct!.Id, 1)]));
+            new CreateOrderRequest
+            {
+                Items =
+                [
+                    new CreateOrderItemRequest
+                    {
+                        ProductId = createdProduct!.Id,
+                        Quantity = 1
+                    }
+                ]
+            });
         Assert.Equal(HttpStatusCode.OK, orderCreate.StatusCode);
         var createdOrder = await orderCreate.Content.ReadFromJsonAsync<CreatedResponse>();
 

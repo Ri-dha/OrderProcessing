@@ -1,9 +1,11 @@
 using JasperFx.Resources;
 using Microsoft.EntityFrameworkCore;
-using OrderProcessing.Features;
+using OrderProcessing.Application;
+using OrderProcessing.Application.Services;
 using OrderProcessing.Infrastructure.Persistence;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
+using Wolverine.ErrorHandling;
 using Wolverine.Postgresql;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,13 +16,15 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
+builder.Services.AddControllers();
 
 builder.Host.UseWolverine(opts =>
 {
-    opts.Discovery.IncludeAssembly(typeof(Program).Assembly);
+    opts.Discovery.IncludeAssembly(typeof(AssemblyMarker).Assembly);
     opts.PersistMessagesWithPostgresql(connectionString);
     opts.Policies.UseDurableLocalQueues();
     opts.UseEntityFrameworkCoreTransactions();
+    opts.Policies.OnException<DbUpdateConcurrencyException>().RetryTimes(5);
 });
 
 builder.Services.AddHostedService<IdempotencyCleanupService>();
@@ -42,7 +46,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.MapOrderProcessingEndpoints();
+app.MapControllers();
 app.Run();
 
 public partial class Program;
