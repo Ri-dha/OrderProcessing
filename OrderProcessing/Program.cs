@@ -1,10 +1,13 @@
+using JasperFx.Resources;
 using Microsoft.EntityFrameworkCore;
 using OrderProcessing.Features;
 using OrderProcessing.Infrastructure.Persistence;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
+using Wolverine.Postgresql;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Host.UseResourceSetupOnStartup();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
                        ?? throw new InvalidOperationException("DefaultConnection is required.");
@@ -15,6 +18,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Host.UseWolverine(opts =>
 {
     opts.Discovery.IncludeAssembly(typeof(Program).Assembly);
+    opts.PersistMessagesWithPostgresql(connectionString);
+    opts.Policies.UseDurableLocalQueues();
     opts.UseEntityFrameworkCoreTransactions();
 });
 

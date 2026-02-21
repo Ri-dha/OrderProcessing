@@ -18,7 +18,7 @@ public class IdempotencyCleanupService : BackgroundService
             await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
             using var scope = _scopeFactory.CreateScope();
             var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
-            await bus.InvokeAsync(new CleanupIdempotencyRecordsCommand(), stoppingToken);
+            await bus.SendAsync(new CleanupIdempotencyRecordsCommand(), new DeliveryOptions());
         }
     }
 }

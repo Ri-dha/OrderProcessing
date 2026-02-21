@@ -8,7 +8,7 @@ using OrderProcessing.Infrastructure.Persistence;
 
 namespace OrderProcessing.Features;
 
-public class OrderCommandHandlers
+public class OrderCommandHandler
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
