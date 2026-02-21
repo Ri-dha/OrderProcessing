@@ -25,17 +25,17 @@ public sealed class CreateProductsBulkRequest
 
 public sealed class UpdateProductRequest
 {
-    [Required, StringLength(200, MinimumLength = 1)]
-    public string Name { get; init; } = string.Empty;
+    [StringLength(200, MinimumLength = 1)]
+    public string? Name { get; init; }
 
-    [Required, StringLength(50, MinimumLength = 1)]
-    public string Sku { get; init; } = string.Empty;
+    [StringLength(50, MinimumLength = 1)]
+    public string? Sku { get; init; }
 
     [Range(0, double.MaxValue)]
-    public decimal Price { get; init; }
+    public decimal? Price { get; init; }
 
     [Range(0, int.MaxValue)]
-    public int Stock { get; init; }
+    public int? Stock { get; init; }
 
-    public bool IsDeleted { get; init; }
+    public bool? IsDeleted { get; init; }
 }

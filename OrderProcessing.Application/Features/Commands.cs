@@ -2,7 +2,7 @@ namespace OrderProcessing.Application.Features;
 
 public sealed record CreateProductCommand(string Name, string Sku, decimal Price, int InitialStock);
 public sealed record CreateProductsBulkCommand(IReadOnlyList<CreateProductCommand> Products);
-public sealed record UpdateProductCommand(Guid ProductId, string Name, string Sku, decimal Price, int Stock, bool IsDeleted);
+public sealed record UpdateProductCommand(Guid ProductId, string? Name, string? Sku, decimal? Price, int? Stock, bool? IsDeleted);
 
 public sealed record CreateOrderCommand(IReadOnlyList<CreateOrderItemCommand> Items);
 

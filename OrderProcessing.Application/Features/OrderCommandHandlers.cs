@@ -47,7 +47,32 @@ public class OrderCommandHandler
             throw new DomainValidationException("Product not found.");
         }
 
-        product.UpdateDetails(command.Name, command.Sku, command.Price, command.Stock, command.IsDeleted);
+        if (command.Name is not null)
+        {
+            product.UpdateName(command.Name);
+        }
+
+        if (command.Sku is not null)
+        {
+            product.UpdateSku(command.Sku);
+        }
+
+        if (command.Price.HasValue)
+        {
+            product.UpdatePrice(command.Price.Value);
+        }
+
+        if (command.Stock.HasValue)
+        {
+            product.UpdateStock(command.Stock.Value);
+        }
+
+        if (command.IsDeleted.HasValue)
+        {
+            product.SetDeleted(command.IsDeleted.Value);
+        }
+
+        await db.SaveChangesAsync(ct);
         return new ProductResponse(product.Id, product.Name, product.Sku, product.Price, product.AvailableStock, product.IsDeleted);
     }
 
