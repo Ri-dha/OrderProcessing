@@ -2,9 +2,7 @@ namespace OrderProcessing.Domain.enums;
 
 public enum PaymentStatus
 {
-    PaymentPending,
-    Paid,
-    PaymentFailed,
-    RefundRequested,
-    RefundCompleted
+    Succeeded = 0,
+    Failed = 1,
+    Refunded = 2
 }

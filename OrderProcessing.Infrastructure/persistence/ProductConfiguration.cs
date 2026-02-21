@@ -2,24 +2,26 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using OrderProcessing.Domain.entities;
 
-
 namespace OrderProcessing.Infrastructure.Persistence;
 
 public class ProductConfiguration : IEntityTypeConfiguration<Product>
 {
     public void Configure(EntityTypeBuilder<Product> builder)
     {
-        builder.HasKey(p => p.Id);
-        
-        builder.Property(p => p.Sku)
+        builder.HasKey(x => x.Id);
+
+        builder.Property(x => x.Name)
+            .IsRequired()
+            .HasMaxLength(200);
+
+        builder.Property(x => x.Sku)
             .IsRequired()
             .HasMaxLength(50);
-               
-        builder.HasIndex(p => p.Sku).IsUnique();
-        
-        // THE CONCURRENCY MAGIC
-        // This tells EF Core to use PostgreSQL's internal xmin column to prevent overselling.
-        builder.Property(p => p.Version)
+
+        builder.HasIndex(x => x.Sku)
+            .IsUnique();
+
+        builder.Property(x => x.Version)
             .IsRowVersion();
     }
 }

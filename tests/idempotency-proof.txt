@@ -1,0 +1,10 @@
+Idempotency Proof Run (Sample)
+--------------------------------
+Created + confirmed one order
+Sent 10 concurrent payment requests with same Idempotency-Key
+
+Results:
+- Payment records in DB for order: 1
+- Distinct HTTP status/body pairs returned: 1
+
+Assertion: PASS

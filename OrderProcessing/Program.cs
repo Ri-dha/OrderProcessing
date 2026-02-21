@@ -1,43 +1,52 @@
+using JasperFx.Resources;
 using Microsoft.EntityFrameworkCore;
-using OrderProcessing.Domain.repositories;
+using OrderProcessing.Application;
+using OrderProcessing.Application.Services;
 using OrderProcessing.Infrastructure.Persistence;
-using OrderProcessing.Infrastructure.repositories;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
-using Wolverine.Http;
+using Wolverine.ErrorHandling;
+using Wolverine.Postgresql;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Host.UseResourceSetupOnStartup();
 
-// 1. Configure Database Connection
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+                       ?? throw new InvalidOperationException("DefaultConnection is required.");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
+builder.Services.AddControllers();
 
-// 2. Register Repositories
-builder.Services.AddScoped<IOrderRepository, OrderRepository>();
-builder.Services.AddScoped<IProductRepository, ProductRepository>();
-
-// 3. Configure Wolverine
 builder.Host.UseWolverine(opts =>
 {
-    // Tells Wolverine to find our Command Handlers in the Application project
-    opts.Discovery.IncludeAssembly(typeof(OrderProcessing.Application.AssemblyMarker).Assembly);
-    
-    // Automatically wrap handlers in a database transaction and call SaveChanges!
+    opts.Discovery.IncludeAssembly(typeof(AssemblyMarker).Assembly);
+    opts.PersistMessagesWithPostgresql(connectionString);
+    opts.Policies.UseDurableLocalQueues();
     opts.UseEntityFrameworkCoreTransactions();
+    opts.Policies.OnException<DbUpdateConcurrencyException>().RetryTimes(5);
 });
 
-builder.Services.AddOpenApi();
+builder.Services.AddHostedService<IdempotencyCleanupService>();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
+if (!app.Environment.IsEnvironment("Testing"))
 {
-    app.MapOpenApi();
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await db.Database.EnsureCreatedAsync();
 }
 
-// 4. Map Wolverine HTTP endpoints
-app.MapWolverineEndpoints();
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
+app.MapControllers();
 app.Run();
+
+public partial class Program;

@@ -8,12 +8,19 @@ public class OrderItem
     public int Quantity { get; private set; }
     public decimal UnitPrice { get; private set; }
 
-    internal OrderItem(Guid orderId, Guid productId, int quantity, decimal unitPrice)
+    private OrderItem()
     {
-        Id = Guid.NewGuid();
-        OrderId = orderId;
-        ProductId = productId;
-        Quantity = quantity;
-        UnitPrice = unitPrice;
+    }
+
+    internal static OrderItem Create(Guid orderId, Guid productId, int quantity, decimal unitPrice)
+    {
+        return new OrderItem
+        {
+            Id = Guid.NewGuid(),
+            OrderId = orderId,
+            ProductId = productId,
+            Quantity = quantity,
+            UnitPrice = unitPrice
+        };
     }
 }

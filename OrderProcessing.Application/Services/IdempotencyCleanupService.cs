@@ -1,0 +1,27 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Wolverine;
+using OrderProcessing.Application.Features;
+
+namespace OrderProcessing.Application.Services;
+
+public class IdempotencyCleanupService : BackgroundService
+{
+    private readonly IServiceScopeFactory _scopeFactory;
+
+    public IdempotencyCleanupService(IServiceScopeFactory scopeFactory)
+    {
+        _scopeFactory = scopeFactory;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
+            using var scope = _scopeFactory.CreateScope();
+            var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
+            await bus.SendAsync(new CleanupIdempotencyRecordsCommand(), new DeliveryOptions());
+        }
+    }
+}

@@ -8,13 +8,18 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
 {
     public void Configure(EntityTypeBuilder<Order> builder)
     {
-        builder.HasKey(o => o.Id);
-        
-        // Save enum as readable string
-        builder.Property(o => o.Status).HasConversion<string>(); 
-        
-        builder.HasMany(o => o.Items)
+        builder.HasKey(x => x.Id);
+
+        builder.Property(x => x.Status)
+            .HasConversion<string>()
+            .IsRequired();
+
+        builder.Property(x => x.TrackingNumber)
+            .HasMaxLength(100);
+
+        builder.HasMany(x => x.Items)
             .WithOne()
-            .HasForeignKey(i => i.OrderId);
+            .HasForeignKey(x => x.OrderId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
