@@ -4,7 +4,7 @@ using OrderProcessing.Domain.errors;
 using Wolverine;
 using Wolverine.Http;
 
-namespace OrderProcessing.Features;
+namespace OrderProcessing.Features.Endpoints;
 
 public static class OrdersEndpoints
 {
