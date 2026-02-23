@@ -1,9 +1,6 @@
-using System.Text.Json;
 using OrderProcessing.Application.Features;
 using OrderProcessing.Application.Features.Contracts;
 using OrderProcessing.Domain.errors;
-using OrderProcessing.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
 using Wolverine;
 using Wolverine.Http;
 
@@ -11,8 +8,6 @@ namespace OrderProcessing.Features;
 
 public static class PaymentsEndpoints
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     [WolverinePost("/api/orders/{id:guid}/pay/initiate")]
     public static async Task<IResult> InitiatePayment(Guid id, InitiatePaymentRequest request, IMessageBus bus,
         CancellationToken ct)
@@ -52,24 +47,17 @@ public static class PaymentsEndpoints
     }
 
     [WolverineGet("/api/orders/{id:guid}/pay/verify/{idempotencyKey}")]
-    public static async Task<IResult> PollVerifyPaymentStatus(Guid id, string idempotencyKey, AppDbContext db,
+    public static async Task<IResult> PollVerifyPaymentStatus(Guid id, string idempotencyKey, IMessageBus bus,
         CancellationToken ct)
     {
-        var record = await db.IdempotencyRecords
-            .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.OrderId == id && x.Key == idempotencyKey, ct);
+        var result = await bus.InvokeAsync<VerifyPaymentResult>(
+            new PollPaymentVerificationStatusQuery(id, idempotencyKey), ct);
 
-        if (record is null)
+        if (result.Response is null)
         {
-            return Results.NotFound(new { error = "Idempotency key not found for this order." });
+            return Results.Json(new { message = result.Message }, statusCode: result.StatusCode);
         }
 
-        if (!record.IsCompleted)
-        {
-            return Results.Json(new { message = "Payment processing pending." }, statusCode: 202);
-        }
-
-        var response = JsonSerializer.Deserialize<PaymentResponse>(record.ResponseBody!, JsonOptions);
-        return Results.Json(response, statusCode: record.ResponseStatusCode);
+        return Results.Json(result.Response, statusCode: result.StatusCode);
     }
 }

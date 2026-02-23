@@ -29,6 +29,11 @@ public sealed record CompleteRefundCommand(Guid OrderId);
 
 public sealed record CleanupIdempotencyRecordsCommand;
 
+public sealed record GetProductsQuery(int? Page, int? PageSize);
+public sealed record GetOrdersQuery(int? Page, int? PageSize);
+public sealed record GetOrderByIdQuery(Guid OrderId);
+public sealed record PollPaymentVerificationStatusQuery(Guid OrderId, string IdempotencyKey);
+
 public record StockReservedEvent(Guid ProductId, Guid OrderId, int Quantity);
 public record StockReleasedEvent(Guid ProductId, Guid OrderId, int Quantity);
 public record StockRestockedEvent(Guid ProductId, Guid OrderId, int Quantity);

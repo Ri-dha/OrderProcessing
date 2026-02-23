@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using OrderProcessing.Application.Features.Contracts;
 using OrderProcessing.Domain.entities;
 using OrderProcessing.Domain.enums;
 using OrderProcessing.Domain.errors;
@@ -13,6 +14,110 @@ namespace OrderProcessing.Application.Features;
 public class OrderCommandHandler
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    public async Task<PagedResponse<ProductResponse>> Handle(GetProductsQuery query, AppDbContext db, CancellationToken ct)
+    {
+        var page = query.Page ?? 1;
+        var requestedPageSize = query.PageSize ?? 20;
+
+        if (page <= 0 || requestedPageSize <= 0)
+        {
+            throw new DomainValidationException("page and pageSize must be greater than 0.");
+        }
+
+        var pageSize = Math.Min(requestedPageSize, 100);
+        var totalCount = await db.Products.CountAsync(ct);
+
+        var items = await db.Products
+            .AsNoTracking()
+            .OrderBy(x => x.Name)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(x => new ProductResponse(x.Id, x.Name, x.Sku, x.Price, x.AvailableStock, x.IsDeleted))
+            .ToListAsync(ct);
+
+        return new PagedResponse<ProductResponse>(items, page, pageSize, totalCount);
+    }
+
+    public async Task<PagedResponse<OrderSummaryResponse>> Handle(GetOrdersQuery query, AppDbContext db, CancellationToken ct)
+    {
+        var page = query.Page ?? 1;
+        var requestedPageSize = query.PageSize ?? 20;
+
+        if (page <= 0 || requestedPageSize <= 0)
+        {
+            throw new DomainValidationException("page and pageSize must be greater than 0.");
+        }
+
+        var pageSize = Math.Min(requestedPageSize, 100);
+        var totalCount = await db.Orders.CountAsync(ct);
+
+        var items = await db.Orders
+            .AsNoTracking()
+            .OrderByDescending(x => x.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(x => new OrderSummaryResponse(
+                x.Id,
+                x.Status.ToString(),
+                x.TrackingNumber,
+                x.Items.Sum(i => i.Quantity * i.UnitPrice),
+                x.Items.Count,
+                x.CreatedAt))
+            .ToListAsync(ct);
+
+        return new PagedResponse<OrderSummaryResponse>(items, page, pageSize, totalCount);
+    }
+
+    public async Task<OrderDetailsResponse?> Handle(GetOrderByIdQuery query, AppDbContext db, CancellationToken ct)
+    {
+        var order = await db.Orders
+            .AsNoTracking()
+            .Include(x => x.Items)
+            .FirstOrDefaultAsync(x => x.Id == query.OrderId, ct);
+
+        if (order is null)
+        {
+            return null;
+        }
+
+        return new OrderDetailsResponse(
+            order.Id,
+            order.Status.ToString(),
+            order.TrackingNumber,
+            order.TotalAmount(),
+            order.Items.Select(x => new OrderLineResponse(x.ProductId, x.Quantity, x.UnitPrice)).ToArray());
+    }
+
+    public async Task<VerifyPaymentResult> Handle(PollPaymentVerificationStatusQuery query, AppDbContext db, CancellationToken ct)
+    {
+        var record = await db.IdempotencyRecords
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.OrderId == query.OrderId && x.Key == query.IdempotencyKey, ct);
+
+        if (record is null)
+        {
+            return new VerifyPaymentResult(404, null, "Idempotency key not found for this order.");
+        }
+
+        if (!record.IsCompleted)
+        {
+            return PendingResult();
+        }
+
+        if (!record.ResponseStatusCode.HasValue || string.IsNullOrWhiteSpace(record.ResponseBody))
+        {
+            return new VerifyPaymentResult(500, null, "Stored payment response is incomplete.");
+        }
+
+        var response = JsonSerializer.Deserialize<PaymentResponse>(record.ResponseBody!, JsonOptions);
+        if (response is null)
+        {
+            return new VerifyPaymentResult(500, null, "Stored payment response is invalid.");
+        }
+
+        return new VerifyPaymentResult(record.ResponseStatusCode.Value, response, null);
+    }
 
     public async Task<CreatedResponse> Handle(CreateProductCommand command, AppDbContext db, CancellationToken ct)
     {
