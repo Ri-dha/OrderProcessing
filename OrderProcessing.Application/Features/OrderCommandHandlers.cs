@@ -121,13 +121,19 @@ public class OrderCommandHandler
         if (order is null) throw new DomainValidationException("Order not found.");
 
         order.TransitionTo(OrderStatus.Confirmed);
+        var productIds = order.Items.Select(x => x.ProductId).Distinct().ToArray();
+        var products = await db.Products
+            .Where(x => productIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, ct);
 
         var messages = new OutgoingMessages();
 
         foreach (var item in order.Items)
         {
-            var product = await db.Products.FirstOrDefaultAsync(p => p.Id == item.ProductId, ct);
-            if (product is null) throw new DomainValidationException($"Product {item.ProductId} not found.");
+            if (!products.TryGetValue(item.ProductId, out var product))
+            {
+                throw new DomainValidationException($"Product {item.ProductId} not found.");
+            }
 
             product.ReserveStock(item.Quantity);
         
@@ -153,7 +159,7 @@ public class OrderCommandHandler
             throw new DomainValidationException("Order not found.");
         }
 
-        if (order.Status == OrderStatus.Confirmed)
+        if (order.Status is OrderStatus.Confirmed or OrderStatus.PaymentFailed)
         {
             var messages = new OutgoingMessages();
 
@@ -192,14 +198,14 @@ public class OrderCommandHandler
             throw new DomainValidationException("Order not found.");
         }
 
-        if (order.Status == OrderStatus.Confirmed)
+        if (order.Status is OrderStatus.Confirmed or OrderStatus.PaymentFailed)
         {
             order.TransitionTo(OrderStatus.PaymentPending);
         }
         else if (order.Status != OrderStatus.PaymentPending)
         {
             throw new DomainValidationException(
-                $"Cannot initiate payment. Current status is {order.Status}. Allowed status: Confirmed or PaymentPending.");
+                $"Cannot initiate payment. Current status is {order.Status}. Allowed status: Confirmed, PaymentFailed, or PaymentPending.");
         }
 
         var token = PaymentVerificationToken.Create(order.Id, TimeSpan.FromMinutes(5));

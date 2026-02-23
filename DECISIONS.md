@@ -17,3 +17,6 @@ Transaction boundary is a single command handler invocation (through Wolverine +
 
 ## 6) Wolverine vs Traditional ASP.NET
 Write operations are implemented as Wolverine command handlers. HTTP routing is done with ASP.NET Minimal APIs that dispatch to Wolverine (`IMessageBus`) so endpoint bodies remain thin and orchestration stays in handlers. This balances explicit HTTP control with Wolverine-centric command execution and transactional middleware.
+
+## 7) Omission of the Repository Pattern
+   Initially, I considered implementing the Repository Pattern (IOrderRepository, IProductRepository) to abstract the database. However, I intentionally removed it. In a CQRS architecture utilizing Wolverine, injecting EF Core's AppDbContext directly into the Command Handlers is the preferred, idiomatic approach. AppDbContext natively implements the Unit of Work pattern, and DbSet<T> serves as the repository. Introducing a custom repository layer over EF Core would have been a redundant abstraction, creating dead code and complicating Wolverine's automatic transactional middleware.
