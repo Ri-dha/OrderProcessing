@@ -21,7 +21,7 @@ public class InventoryLogHandlers
         db.InventoryLogs.Add(new InventoryLog(@event.ProductId, @event.OrderId, InventoryLogType.Restock, @event.Quantity));
     }
 
-    public void Handle(StockDeductedEvent @event, AppDbContext db)
+    public void Handle(FulfillmentCommittedEvent @event, AppDbContext db)
     {
         db.InventoryLogs.Add(new InventoryLog(@event.ProductId, @event.OrderId, InventoryLogType.Deduction, @event.Quantity));
     }

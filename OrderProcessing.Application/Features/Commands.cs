@@ -15,6 +15,7 @@ public sealed record CancelOrderCommand(Guid OrderId);
 public sealed record InitiatePaymentCommand(Guid OrderId, string CardNumber, string ExpiryDate, string Cvc);
 
 public sealed record VerifyPaymentCommand(Guid OrderId, string VerificationToken, string IdempotencyKey);
+public sealed record ProcessPaymentVerificationCommand(Guid OrderId, string VerificationToken, string IdempotencyKey);
 
 public sealed record StartFulfillmentCommand(Guid OrderId);
 
@@ -31,4 +32,4 @@ public sealed record CleanupIdempotencyRecordsCommand;
 public record StockReservedEvent(Guid ProductId, Guid OrderId, int Quantity);
 public record StockReleasedEvent(Guid ProductId, Guid OrderId, int Quantity);
 public record StockRestockedEvent(Guid ProductId, Guid OrderId, int Quantity);
-public record StockDeductedEvent(Guid ProductId, Guid OrderId, int Quantity);
+public record FulfillmentCommittedEvent(Guid ProductId, Guid OrderId, int Quantity);
