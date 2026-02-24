@@ -35,3 +35,7 @@ README.md
 
 # Exclude database data if you accidentally mapped it locally
 **/pgdata/
+
+# Exclude local build artifacts (with wildcard to catch backslash glitches)
+**/bin*
+**/obj*

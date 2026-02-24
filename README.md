@@ -2,17 +2,70 @@
 
 ## Tech Stack
 - .NET 10
-- ASP.NET Core Web API
+- ASP.NET Core Web API (Wolverine.HTTP)
 - Wolverine
-- EF Core
-- PostgreSQL
+- EF Core + PostgreSQL
 
-## Run with Docker
+## Prerequisites
+- .NET SDK 10 (`dotnet --info`)
+- Docker Desktop (for PostgreSQL or full compose run)
+
+## Build
+From `/Users/ridhatareq/Documents/c# projects/untitled folder/OrderProcessing`:
+
+```bash
+dotnet restore OrderProcessing.sln
+dotnet build OrderProcessing.sln
+dotnet test OrderProcessing.sln
+```
+
+Automated integration tests use PostgreSQL. Start DB first:
+```bash
+docker compose -f docker-compose.yml up -d postgres
+dotnet test OrderProcessing.sln
+```
+
+## Run Locally (Recommended)
+1. Start only PostgreSQL:
+```bash
+docker compose -f docker-compose.yml up -d postgres
+```
+
+2. Run the API:
+```bash
+dotnet run --project OrderProcessing/OrderProcessing.csproj
+```
+
+Notes:
+- Connection string is already configured in `OrderProcessing/appsettings.Development.json`.
+- DB migrations are applied automatically on startup.
+- Default local URL from launch profile: `http://localhost:5203`.
+
+## Swagger (Local)
+Swagger is enabled in `Development` environment.
+When you run with `dotnet run`, it starts in `Development`, so open:
+
+- `http://localhost:5203/swagger`
+
+How to use it:
+1. Open `/swagger`.
+2. Expand an endpoint (example: `POST /api/products`).
+3. Click `Try it out`.
+4. Fill request JSON.
+5. Click `Execute`.
+6. Use returned IDs in next endpoints (order/payment flow).
+
+## Run with Docker (API + DB)
 ```bash
 docker compose -f docker-compose.yml up --build
 ```
 
-API base URL: `http://localhost:8080`
+- API base URL: `http://localhost:8080`
+
+Important:
+- Swagger is only enabled in `Development`.
+- If Docker app service runs as `Production`, `/swagger` will return 404.
+- To use Swagger in Docker, set `ASPNETCORE_ENVIRONMENT=Development` in `docker-compose.yml` under `api.environment`.
 
 ## Key Endpoints
 - `POST /api/products`
@@ -20,56 +73,57 @@ API base URL: `http://localhost:8080`
 - `GET /api/products`
 - `PUT /api/products/{id}`
 - `POST /api/orders`
+- `GET /api/orders`
+- `GET /api/orders/{id}`
+- `GET /api/orders/{id}/inventory-logs`
 - `POST /api/orders/{id}/confirm`
+- `POST /api/orders/{id}/cancel`
 - `POST /api/orders/{id}/pay/initiate`
 - `POST /api/orders/{id}/pay/verify`
+- `GET /api/orders/{id}/pay/verify/{idempotencyKey}`
 - `POST /api/orders/{id}/fulfill`
 - `POST /api/orders/{id}/ship`
 - `POST /api/orders/{id}/deliver`
 - `POST /api/orders/{id}/refund/request`
 - `POST /api/orders/{id}/refund/complete`
-- `POST /api/orders/{id}/cancel`
-- `GET /api/orders/{id}`
-
-## Build & Test
-```bash
-dotnet build OrderProcessing.sln
-dotnet test OrderProcessing.sln
-```
 
 ## Required Proof Artifacts
 - `tests/concurrency-proof.txt`
 - `tests/idempotency-proof.txt`
 
 ## Concurrency Proof Runner
-Run this while the API is already running locally:
+Run while API is running locally:
+
 ```bash
 dotnet run --project tests/ConcurrencyProofRunner/ConcurrencyProofRunner.csproj
 ```
 
-Optional arguments:
+Optional args:
+
 ```bash
 dotnet run --project tests/ConcurrencyProofRunner/ConcurrencyProofRunner.csproj -- http://localhost:5203 tests/concurrency-proof.txt
 ```
 
 Each run writes:
 - `tests/concurrency-proof.txt` (latest)
-- `tests/concurrency-proof-YYYYMMDD-HHMMSS.txt` (archived copy)
+- `tests/concurrency-proof-YYYYMMDD-HHMMSS.txt` (archived)
 
 ## Idempotency Proof Runner
-Run this while the API and PostgreSQL are running:
+Run while API + PostgreSQL are running:
+
 ```bash
 dotnet run --project tests/IdempotencyProofRunner/IdempotencyProofRunner.csproj
 ```
 
-Optional arguments:
+Optional args:
+
 ```bash
 dotnet run --project tests/IdempotencyProofRunner/IdempotencyProofRunner.csproj -- http://localhost:5203 tests/idempotency-proof.txt "Host=localhost;Port=5432;Database=order_db;Username=postgres;Password=postgres"
 ```
 
 Each run writes:
 - `tests/idempotency-proof.txt` (latest)
-- `tests/idempotency-proof-YYYYMMDD-HHMMSS.txt` (archived copy)
+- `tests/idempotency-proof-YYYYMMDD-HHMMSS.txt` (archived)
 
 ## Video Walkthrough
 Add your video link here:

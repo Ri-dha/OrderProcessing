@@ -39,3 +39,11 @@ public sealed record OrderSummaryResponse(
     DateTime CreatedAt);
 
 public sealed record OrderLineResponse(Guid ProductId, int Quantity, decimal UnitPrice);
+
+public sealed record InventoryLogResponse(
+    Guid Id,
+    Guid ProductId,
+    Guid OrderId,
+    string Type,
+    int Quantity,
+    DateTime Timestamp);

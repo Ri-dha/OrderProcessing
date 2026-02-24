@@ -89,6 +89,23 @@ public class OrderCommandHandler
             order.Items.Select(x => new OrderLineResponse(x.ProductId, x.Quantity, x.UnitPrice)).ToArray());
     }
 
+    public async Task<IReadOnlyList<InventoryLogResponse>> Handle(GetOrderInventoryLogsQuery query, AppDbContext db,
+        CancellationToken ct)
+    {
+        return await db.InventoryLogs
+            .AsNoTracking()
+            .Where(x => x.OrderId == query.OrderId)
+            .OrderBy(x => x.Timestamp)
+            .Select(x => new InventoryLogResponse(
+                x.Id,
+                x.ProductId,
+                x.OrderId,
+                x.Type.ToString(),
+                x.Quantity,
+                x.Timestamp))
+            .ToListAsync(ct);
+    }
+
     public async Task<VerifyPaymentResult> Handle(PollPaymentVerificationStatusQuery query, AppDbContext db, CancellationToken ct)
     {
         var record = await db.IdempotencyRecords
@@ -223,9 +240,14 @@ public class OrderCommandHandler
             .Include(o => o.Items)
             .FirstOrDefaultAsync(o => o.Id == command.OrderId, ct);
 
-        if (order is null) throw new DomainValidationException("Order not found.");
+        if (order is null)
+        {
+            throw new DomainValidationException("Order not found.");
+        }
 
         order.TransitionTo(OrderStatus.Confirmed);
+    
+        // YOUR EXCELLENT OPTIMIZATION: Bulk fetch to avoid N+1 queries
         var productIds = order.Items.Select(x => x.ProductId).Distinct().ToArray();
         var products = await db.Products
             .Where(x => productIds.Contains(x.Id))
@@ -242,17 +264,19 @@ public class OrderCommandHandler
 
             product.ReserveStock(item.Quantity);
         
-           
+            // Yield the cascading message for the background outbox
             messages.Add(new StockReservedEvent(product.Id, order.Id, item.Quantity));
         }
 
-        await db.SaveChangesAsync(ct);
+        // Notice: 
+        // 1. No `await db.SaveChangesAsync(ct);` (Wolverine does it automatically)
+        // 2. No `try/catch` or `for` loop (Wolverine retries it automatically)
+    
         return (
-            new OperationResponse("Order confirmed and stock reserved.", order.Id, order.Status.ToString()), 
+            new OperationResponse("Order confirmed and stock reserved.", order.Id, order.Status.ToString()),
             messages
         );
     }
-
     public async Task<(OperationResponse, OutgoingMessages)> Handle(CancelOrderCommand command, AppDbContext db, CancellationToken ct)
     {
         var order = await db.Orders

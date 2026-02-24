@@ -23,6 +23,7 @@ services:
       - "8080:8080"
     environment:
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=order_db;Username=postgres;Password=postgres;
+      - ASPNETCORE_ENVIRONMENT=Development
     depends_on:
       postgres:
         condition: service_healthy
