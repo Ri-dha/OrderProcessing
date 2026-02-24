@@ -10,14 +10,14 @@ public class Order : IEntity, IAuditableEntity, ISoftDeletable
         new Dictionary<OrderStatus, OrderStatus[]>
         {
             [OrderStatus.Draft] = [OrderStatus.Confirmed, OrderStatus.Cancelled],
-            [OrderStatus.Confirmed] = [OrderStatus.PaymentPending, OrderStatus.Cancelled],
+            [OrderStatus.Confirmed] = [OrderStatus.PaymentPending, OrderStatus.Cancelled,OrderStatus.PaymentFailed],
             [OrderStatus.PaymentPending] = [OrderStatus.Paid, OrderStatus.PaymentFailed],
             [OrderStatus.Paid] = [OrderStatus.Fulfilling],
             [OrderStatus.Fulfilling] = [OrderStatus.Shipped],
             [OrderStatus.Shipped] = [OrderStatus.Delivered],
             [OrderStatus.Delivered] = [OrderStatus.RefundRequested],
             [OrderStatus.RefundRequested] = [OrderStatus.Refunded],
-            [OrderStatus.PaymentFailed] = [],
+            [OrderStatus.PaymentFailed] = [OrderStatus.PaymentPending, OrderStatus.Cancelled],
             [OrderStatus.Cancelled] = [],
             [OrderStatus.Refunded] = []
         };
@@ -28,6 +28,8 @@ public class Order : IEntity, IAuditableEntity, ISoftDeletable
     public DateTime? UpdatedAt { get; private set; }
     public bool IsDeleted { get; private set; }
     public OrderStatus Status { get; private set; }
+    
+    public uint Version { get; private set; }
 
     private readonly List<OrderItem> _items = [];
     public IReadOnlyCollection<OrderItem> Items => _items.AsReadOnly();

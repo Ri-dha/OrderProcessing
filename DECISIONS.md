@@ -17,3 +17,9 @@ Transaction boundary is a single command handler invocation (through Wolverine +
 
 ## 6) Wolverine vs Traditional ASP.NET
 Write operations are implemented as Wolverine command handlers. HTTP routing is done with ASP.NET Minimal APIs that dispatch to Wolverine (`IMessageBus`) so endpoint bodies remain thin and orchestration stays in handlers. This balances explicit HTTP control with Wolverine-centric command execution and transactional middleware.
+
+## 7) Omission of the Repository Pattern
+   Initially, I considered implementing the Repository Pattern (IOrderRepository, IProductRepository) to abstract the database. However, I intentionally removed it. In a CQRS architecture utilizing Wolverine, injecting EF Core's AppDbContext directly into the Command Handlers is the preferred, idiomatic approach. AppDbContext natively implements the Unit of Work pattern, and DbSet<T> serves as the repository. Introducing a custom repository layer over EF Core would have been a redundant abstraction, creating dead code and complicating Wolverine's automatic transactional middleware.
+
+## 8) PCI Compliance & Payment Gateway Mocking
+   In InitiatePaymentCommand, the API accepts raw credit card data (PAN, CVC, Expiry) to perform basic domain validation (Luhn algorithm, expiry checks). I acknowledge this is a severe PCI DSS compliance violation in a production environment. In a real-world scenario, the backend API should never touch raw card data. Instead, I would implement a Tokenization pattern (e.g., Stripe or Braintree) where the frontend exchanges raw card data for a secure, single-use token directly with the gateway, and the API only processes that token. I chose to accept raw card data here strictly to fulfill the assessment's requirement of demonstrating rich domain validation and simulating a gateway.

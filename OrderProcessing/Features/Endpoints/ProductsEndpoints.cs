@@ -1,12 +1,10 @@
-using Microsoft.EntityFrameworkCore;
 using OrderProcessing.Application.Features;
 using OrderProcessing.Application.Features.Contracts;
 using OrderProcessing.Domain.errors;
-using OrderProcessing.Infrastructure.Persistence;
 using Wolverine;
 using Wolverine.Http;
 
-namespace OrderProcessing.Features;
+namespace OrderProcessing.Features.Endpoints;
 
 public static class ProductsEndpoints
 {
@@ -45,15 +43,18 @@ public static class ProductsEndpoints
     }
 
     [WolverineGet("/api/products")]
-    public static async Task<IResult> GetProducts(AppDbContext db, CancellationToken ct)
+    public static async Task<IResult> GetProducts(IMessageBus bus, int? page = null, int? pageSize = null,
+        CancellationToken ct = default)
     {
-        var products = await db.Products
-            .AsNoTracking()
-            .OrderBy(x => x.Name)
-            .Select(x => new ProductResponse(x.Id, x.Name, x.Sku, x.Price, x.AvailableStock, x.IsDeleted))
-            .ToListAsync(ct);
-
-        return Results.Ok(products);
+        try
+        {
+            var response = await bus.InvokeAsync<PagedResponse<ProductResponse>>(new GetProductsQuery(page, pageSize), ct);
+            return Results.Ok(response);
+        }
+        catch (DomainValidationException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
     }
 
     [WolverinePut("/api/products/{id:guid}")]

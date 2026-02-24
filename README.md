@@ -9,7 +9,7 @@
 
 ## Run with Docker
 ```bash
-docker compose -f compose.yaml up --build
+docker compose -f docker-compose.yml up --build
 ```
 
 API base URL: `http://localhost:8080`
@@ -40,6 +40,36 @@ dotnet test OrderProcessing.sln
 ## Required Proof Artifacts
 - `tests/concurrency-proof.txt`
 - `tests/idempotency-proof.txt`
+
+## Concurrency Proof Runner
+Run this while the API is already running locally:
+```bash
+dotnet run --project tests/ConcurrencyProofRunner/ConcurrencyProofRunner.csproj
+```
+
+Optional arguments:
+```bash
+dotnet run --project tests/ConcurrencyProofRunner/ConcurrencyProofRunner.csproj -- http://localhost:5203 tests/concurrency-proof.txt
+```
+
+Each run writes:
+- `tests/concurrency-proof.txt` (latest)
+- `tests/concurrency-proof-YYYYMMDD-HHMMSS.txt` (archived copy)
+
+## Idempotency Proof Runner
+Run this while the API and PostgreSQL are running:
+```bash
+dotnet run --project tests/IdempotencyProofRunner/IdempotencyProofRunner.csproj
+```
+
+Optional arguments:
+```bash
+dotnet run --project tests/IdempotencyProofRunner/IdempotencyProofRunner.csproj -- http://localhost:5203 tests/idempotency-proof.txt "Host=localhost;Port=5432;Database=order_db;Username=postgres;Password=postgres"
+```
+
+Each run writes:
+- `tests/idempotency-proof.txt` (latest)
+- `tests/idempotency-proof-YYYYMMDD-HHMMSS.txt` (archived copy)
 
 ## Video Walkthrough
 Add your video link here:

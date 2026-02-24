@@ -21,7 +21,6 @@
       - db
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      # Notice the Host is 'db', matching the service name above
       - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=order_db;Username=postgres;Password=postgres;
 
 volumes:

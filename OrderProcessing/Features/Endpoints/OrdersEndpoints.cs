@@ -1,12 +1,10 @@
-using Microsoft.EntityFrameworkCore;
 using OrderProcessing.Application.Features;
 using OrderProcessing.Application.Features.Contracts;
 using OrderProcessing.Domain.errors;
-using OrderProcessing.Infrastructure.Persistence;
 using Wolverine;
 using Wolverine.Http;
 
-namespace OrderProcessing.Features;
+namespace OrderProcessing.Features.Endpoints;
 
 public static class OrdersEndpoints
 {
@@ -67,24 +65,32 @@ public static class OrdersEndpoints
     }
 
     [WolverineGet("/api/orders/{id:guid}")]
-    public static async Task<IResult> GetOrder(Guid id, AppDbContext db, CancellationToken ct)
+    public static async Task<IResult> GetOrder(Guid id, IMessageBus bus, CancellationToken ct)
     {
-        var order = await db.Orders
-            .AsNoTracking()
-            .Include(x => x.Items)
-            .FirstOrDefaultAsync(x => x.Id == id, ct);
+        var order = await bus.InvokeAsync<OrderDetailsResponse?>(new GetOrderByIdQuery(id), ct);
 
         if (order is null)
         {
             return Results.NotFound(new { error = "Order not found." });
         }
 
-        return Results.Ok(new OrderDetailsResponse(
-            order.Id,
-            order.Status.ToString(),
-            order.TrackingNumber,
-            order.TotalAmount(),
-            order.Items.Select(x => new OrderLineResponse(x.ProductId, x.Quantity, x.UnitPrice)).ToArray()));
+        return Results.Ok(order);
+    }
+
+    [WolverineGet("/api/orders")]
+    public static async Task<IResult> GetOrders(IMessageBus bus, int? page = null, int? pageSize = null,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await bus.InvokeAsync<PagedResponse<OrderSummaryResponse>>(
+                new GetOrdersQuery(page, pageSize), ct);
+            return Results.Ok(response);
+        }
+        catch (DomainValidationException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
     }
 
     private static async Task<IResult> InvokeOperation<TCommand>(IMessageBus bus, TCommand command, CancellationToken ct)

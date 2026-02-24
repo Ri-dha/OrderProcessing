@@ -30,4 +30,12 @@ public sealed record OrderDetailsResponse(
     decimal TotalAmount,
     IReadOnlyList<OrderLineResponse> Items);
 
+public sealed record OrderSummaryResponse(
+    Guid Id,
+    string Status,
+    string? TrackingNumber,
+    decimal TotalAmount,
+    int ItemCount,
+    DateTime CreatedAt);
+
 public sealed record OrderLineResponse(Guid ProductId, int Quantity, decimal UnitPrice);

@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using OrderProcessing.Domain.entities;
 
-namespace OrderProcessing.Infrastructure.Persistence;
+namespace OrderProcessing.Infrastructure.persistence.configs;
 
 public class OrderConfiguration : IEntityTypeConfiguration<Order>
 {
@@ -16,6 +16,9 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
 
         builder.Property(x => x.TrackingNumber)
             .HasMaxLength(100);
+        
+        builder.Property(x => x.Version)
+            .IsRowVersion();
 
         builder.HasMany(x => x.Items)
             .WithOne()

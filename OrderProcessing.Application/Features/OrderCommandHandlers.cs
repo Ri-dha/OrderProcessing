@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using OrderProcessing.Application.Features.Contracts;
 using OrderProcessing.Domain.entities;
 using OrderProcessing.Domain.enums;
 using OrderProcessing.Domain.errors;
@@ -13,6 +14,110 @@ namespace OrderProcessing.Application.Features;
 public class OrderCommandHandler
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    public async Task<PagedResponse<ProductResponse>> Handle(GetProductsQuery query, AppDbContext db, CancellationToken ct)
+    {
+        var page = query.Page ?? 1;
+        var requestedPageSize = query.PageSize ?? 20;
+
+        if (page <= 0 || requestedPageSize <= 0)
+        {
+            throw new DomainValidationException("page and pageSize must be greater than 0.");
+        }
+
+        var pageSize = Math.Min(requestedPageSize, 100);
+        var totalCount = await db.Products.CountAsync(ct);
+
+        var items = await db.Products
+            .AsNoTracking()
+            .OrderBy(x => x.Name)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(x => new ProductResponse(x.Id, x.Name, x.Sku, x.Price, x.AvailableStock, x.IsDeleted))
+            .ToListAsync(ct);
+
+        return new PagedResponse<ProductResponse>(items, page, pageSize, totalCount);
+    }
+
+    public async Task<PagedResponse<OrderSummaryResponse>> Handle(GetOrdersQuery query, AppDbContext db, CancellationToken ct)
+    {
+        var page = query.Page ?? 1;
+        var requestedPageSize = query.PageSize ?? 20;
+
+        if (page <= 0 || requestedPageSize <= 0)
+        {
+            throw new DomainValidationException("page and pageSize must be greater than 0.");
+        }
+
+        var pageSize = Math.Min(requestedPageSize, 100);
+        var totalCount = await db.Orders.CountAsync(ct);
+
+        var items = await db.Orders
+            .AsNoTracking()
+            .OrderByDescending(x => x.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(x => new OrderSummaryResponse(
+                x.Id,
+                x.Status.ToString(),
+                x.TrackingNumber,
+                x.Items.Sum(i => i.Quantity * i.UnitPrice),
+                x.Items.Count,
+                x.CreatedAt))
+            .ToListAsync(ct);
+
+        return new PagedResponse<OrderSummaryResponse>(items, page, pageSize, totalCount);
+    }
+
+    public async Task<OrderDetailsResponse?> Handle(GetOrderByIdQuery query, AppDbContext db, CancellationToken ct)
+    {
+        var order = await db.Orders
+            .AsNoTracking()
+            .Include(x => x.Items)
+            .FirstOrDefaultAsync(x => x.Id == query.OrderId, ct);
+
+        if (order is null)
+        {
+            return null;
+        }
+
+        return new OrderDetailsResponse(
+            order.Id,
+            order.Status.ToString(),
+            order.TrackingNumber,
+            order.TotalAmount(),
+            order.Items.Select(x => new OrderLineResponse(x.ProductId, x.Quantity, x.UnitPrice)).ToArray());
+    }
+
+    public async Task<VerifyPaymentResult> Handle(PollPaymentVerificationStatusQuery query, AppDbContext db, CancellationToken ct)
+    {
+        var record = await db.IdempotencyRecords
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.OrderId == query.OrderId && x.Key == query.IdempotencyKey, ct);
+
+        if (record is null)
+        {
+            return new VerifyPaymentResult(404, null, "Idempotency key not found for this order.");
+        }
+
+        if (!record.IsCompleted)
+        {
+            return PendingResult();
+        }
+
+        if (!record.ResponseStatusCode.HasValue || string.IsNullOrWhiteSpace(record.ResponseBody))
+        {
+            return new VerifyPaymentResult(500, null, "Stored payment response is incomplete.");
+        }
+
+        var response = JsonSerializer.Deserialize<PaymentResponse>(record.ResponseBody!, JsonOptions);
+        if (response is null)
+        {
+            return new VerifyPaymentResult(500, null, "Stored payment response is invalid.");
+        }
+
+        return new VerifyPaymentResult(record.ResponseStatusCode.Value, response, null);
+    }
 
     public async Task<CreatedResponse> Handle(CreateProductCommand command, AppDbContext db, CancellationToken ct)
     {
@@ -121,13 +226,19 @@ public class OrderCommandHandler
         if (order is null) throw new DomainValidationException("Order not found.");
 
         order.TransitionTo(OrderStatus.Confirmed);
+        var productIds = order.Items.Select(x => x.ProductId).Distinct().ToArray();
+        var products = await db.Products
+            .Where(x => productIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, ct);
 
         var messages = new OutgoingMessages();
 
         foreach (var item in order.Items)
         {
-            var product = await db.Products.FirstOrDefaultAsync(p => p.Id == item.ProductId, ct);
-            if (product is null) throw new DomainValidationException($"Product {item.ProductId} not found.");
+            if (!products.TryGetValue(item.ProductId, out var product))
+            {
+                throw new DomainValidationException($"Product {item.ProductId} not found.");
+            }
 
             product.ReserveStock(item.Quantity);
         
@@ -153,7 +264,7 @@ public class OrderCommandHandler
             throw new DomainValidationException("Order not found.");
         }
 
-        if (order.Status == OrderStatus.Confirmed)
+        if (order.Status is OrderStatus.Confirmed or OrderStatus.PaymentFailed)
         {
             var messages = new OutgoingMessages();
 
@@ -192,14 +303,14 @@ public class OrderCommandHandler
             throw new DomainValidationException("Order not found.");
         }
 
-        if (order.Status == OrderStatus.Confirmed)
+        if (order.Status is OrderStatus.Confirmed or OrderStatus.PaymentFailed)
         {
             order.TransitionTo(OrderStatus.PaymentPending);
         }
         else if (order.Status != OrderStatus.PaymentPending)
         {
             throw new DomainValidationException(
-                $"Cannot initiate payment. Current status is {order.Status}. Allowed status: Confirmed or PaymentPending.");
+                $"Cannot initiate payment. Current status is {order.Status}. Allowed status: Confirmed, PaymentFailed, or PaymentPending.");
         }
 
         var token = PaymentVerificationToken.Create(order.Id, TimeSpan.FromMinutes(5));
@@ -213,7 +324,7 @@ public class OrderCommandHandler
             "Payment initiated. Verify with the short-lived token.");
     }
 
-    public async Task<VerifyPaymentResult> Handle(VerifyPaymentCommand command, AppDbContext db,
+    public async Task<(VerifyPaymentResult, OutgoingMessages)> Handle(VerifyPaymentCommand command, AppDbContext db,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(command.IdempotencyKey))
@@ -231,27 +342,9 @@ public class OrderCommandHandler
                 throw new DomainValidationException("Idempotency key has already been used for a different order.");
             }
 
-            return await WaitForCompletedResponse(existingByKey.Key, db, ct);
-        }
-
-        var record = new IdempotencyRecord(command.IdempotencyKey, command.OrderId);
-        db.IdempotencyRecords.Add(record);
-
-        try
-        {
-            await db.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
-        {
-            db.ChangeTracker.Clear();
-            var existing = await db.IdempotencyRecords.FirstAsync(x => x.Key == command.IdempotencyKey, ct);
-
-            if (existing.OrderId != command.OrderId)
-            {
-                throw new DomainValidationException("Idempotency key has already been used for a different order.");
-            }
-
-            return await WaitForCompletedResponse(existing.Key, db, ct);
+            return existingByKey.IsCompleted
+                ? (DeserializeStoredResult(existingByKey), new OutgoingMessages())
+                : (PendingResult(), new OutgoingMessages());
         }
 
         var order = await db.Orders
@@ -287,8 +380,80 @@ public class OrderCommandHandler
             throw new DomainValidationException("Payment verification token has expired.");
         }
 
-        await Task.Delay(TimeSpan.FromSeconds(2), ct);
+        var record = new IdempotencyRecord(command.IdempotencyKey, command.OrderId);
+        db.IdempotencyRecords.Add(record);
 
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            db.ChangeTracker.Clear();
+            var existing = await db.IdempotencyRecords.FirstAsync(x => x.Key == command.IdempotencyKey, ct);
+
+            if (existing.OrderId != command.OrderId)
+            {
+                throw new DomainValidationException("Idempotency key has already been used for a different order.");
+            }
+
+            return existing.IsCompleted
+                ? (DeserializeStoredResult(existing), new OutgoingMessages())
+                : (PendingResult(), new OutgoingMessages());
+        }
+
+        var messages = new OutgoingMessages
+        {
+            new ProcessPaymentVerificationCommand(command.OrderId, command.VerificationToken, command.IdempotencyKey)
+        };
+
+        return (PendingResult(), messages);
+    }
+
+    public async Task Handle(ProcessPaymentVerificationCommand command, AppDbContext db, CancellationToken ct)
+    {
+        var record = await db.IdempotencyRecords
+            .FirstOrDefaultAsync(x => x.Key == command.IdempotencyKey && x.OrderId == command.OrderId, ct);
+
+        if (record is null || record.IsCompleted)
+        {
+            return;
+        }
+
+        var order = await db.Orders
+            .Include(x => x.Items)
+            .FirstOrDefaultAsync(x => x.Id == command.OrderId, ct);
+
+        if (order is null)
+        {
+            var notFound = new PaymentResponse(command.OrderId, OrderStatus.PaymentFailed.ToString(), 0m, "Order not found.");
+            record.Complete(404, JsonSerializer.Serialize(notFound, JsonOptions));
+            await db.SaveChangesAsync(ct);
+            return;
+        }
+
+        if (order.Status != OrderStatus.PaymentPending)
+        {
+            var invalidStatus = new PaymentResponse(order.Id, order.Status.ToString(), order.TotalAmount(),
+                "Order is not in PAYMENT_PENDING state.");
+            record.Complete(409, JsonSerializer.Serialize(invalidStatus, JsonOptions));
+            await db.SaveChangesAsync(ct);
+            return;
+        }
+
+        var token = await db.PaymentVerificationTokens
+            .FirstOrDefaultAsync(x => x.OrderId == command.OrderId && x.Token == command.VerificationToken, ct);
+
+        if (token is null || token.IsUsed() || token.IsExpired())
+        {
+            var invalidToken = new PaymentResponse(order.Id, order.Status.ToString(), order.TotalAmount(),
+                "Payment verification token is invalid or expired.");
+            record.Complete(400, JsonSerializer.Serialize(invalidToken, JsonOptions));
+            await db.SaveChangesAsync(ct);
+            return;
+        }
+
+        await Task.Delay(TimeSpan.FromSeconds(2), ct);
         var failed = Random.Shared.NextDouble() < 0.2d;
         token.MarkUsed();
 
@@ -301,9 +466,8 @@ public class OrderCommandHandler
             var response = new PaymentResponse(order.Id, order.Status.ToString(), order.TotalAmount(),
                 "Payment failed (simulated gateway failure).");
             record.Complete(402, JsonSerializer.Serialize(response, JsonOptions));
-
             await db.SaveChangesAsync(ct);
-            return new VerifyPaymentResult(402, response);
+            return;
         }
 
         order.TransitionTo(OrderStatus.Paid);
@@ -315,7 +479,6 @@ public class OrderCommandHandler
         record.Complete(200, JsonSerializer.Serialize(successResponse, JsonOptions));
 
         await db.SaveChangesAsync(ct);
-        return new VerifyPaymentResult(200, successResponse);
     }
 
     public async Task<(OperationResponse, OutgoingMessages)> Handle(StartFulfillmentCommand command, AppDbContext db, CancellationToken ct)
@@ -334,7 +497,7 @@ public class OrderCommandHandler
 
         foreach (var item in order.Items)
         {
-            messages.Add(new StockDeductedEvent(item.ProductId, order.Id, item.Quantity));
+            messages.Add(new FulfillmentCommittedEvent(item.ProductId, order.Id, item.Quantity));
         }
 
         await db.SaveChangesAsync(ct);
@@ -503,26 +666,14 @@ public class OrderCommandHandler
         return false;
     }
 
-    private static async Task<VerifyPaymentResult> WaitForCompletedResponse(string key,
-        AppDbContext db, CancellationToken ct)
+    private static VerifyPaymentResult PendingResult() =>
+        new(202, null, "Payment verification accepted. Poll status endpoint.");
+
+    private static VerifyPaymentResult DeserializeStoredResult(IdempotencyRecord record)
     {
-        for (var i = 0; i < 100; i++)
-        {
-            var record = await db.IdempotencyRecords
-                .AsNoTracking()
-                .FirstAsync(x => x.Key == key, ct);
+        var response = JsonSerializer.Deserialize<PaymentResponse>(record.ResponseBody!, JsonOptions)
+                       ?? throw new DomainValidationException("Stored idempotency response is invalid.");
 
-            if (record.IsCompleted)
-            {
-                var response = JsonSerializer.Deserialize<PaymentResponse>(record.ResponseBody!, JsonOptions)
-                    ?? throw new DomainValidationException("Stored idempotency response is invalid.");
-
-                return new VerifyPaymentResult(record.ResponseStatusCode!.Value, response);
-            }
-
-            await Task.Delay(100, ct);
-        }
-
-        throw new DomainValidationException("Payment is still processing for this idempotency key. Try again shortly.");
+        return new VerifyPaymentResult(record.ResponseStatusCode!.Value, response);
     }
 }
