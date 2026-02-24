@@ -1,0 +1,27 @@
+﻿services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: order_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  orderprocessing:
+    image: orderprocessing
+    build:
+      context: .
+      dockerfile: OrderProcessing/Dockerfile
+    ports:
+      - "8080:8080" # Default .NET 8+ container port
+    depends_on:
+      - db
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=order_db;Username=postgres;Password=postgres;
+
+volumes:
+  postgres_data:

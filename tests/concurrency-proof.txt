@@ -1,6 +1,8 @@
-Concurrency Proof Run (Sample)
+Concurrency Proof Run
 --------------------------------
-Seeded Product SKU=CONC-1 with stock=10
+StartedAtUtc: 2026-02-23T23:08:45.4146160Z
+BaseUrl: http://localhost:5203
+Seeded Product ID=c7aa011e-1e75-4d2f-babc-8bbf04d29faa, SKU=CONC-20260223230845, InitialStock=10
 Created 20 draft orders, each requesting quantity=1
 Ran 20 concurrent confirmations
 
@@ -8,5 +10,6 @@ Results:
 - Confirmed orders: 10
 - Rejected orders: 10
 - Final stock: 0
+- Total confirm attempts: 20
 
 Assertion: PASS
