@@ -126,14 +126,6 @@ static async Task<ConfirmResult> ConfirmOrderAsync(HttpClient client, Guid order
     return new ConfirmResult(orderId, response.IsSuccessStatusCode, response.StatusCode);
 }
 
-internal sealed record CreatedResponse(Guid Id, string Message);
-
-internal sealed record ProductResponse(Guid Id, string Name, string Sku, decimal Price, int AvailableStock, bool IsDeleted);
-
-internal sealed record PagedResponse<T>(IReadOnlyList<T> Items, int Page, int PageSize, int TotalCount);
-
-internal sealed record ConfirmResult(Guid OrderId, bool IsConfirmed, HttpStatusCode StatusCode);
-
 static string BuildTimestampedPath(string fullOutputPath, DateTime timestampUtc)
 {
     var directory = Path.GetDirectoryName(fullOutputPath) ?? ".";
@@ -142,3 +134,11 @@ static string BuildTimestampedPath(string fullOutputPath, DateTime timestampUtc)
     var timestamp = timestampUtc.ToString("yyyyMMdd-HHmmss");
     return Path.Combine(directory, $"{fileName}-{timestamp}{extension}");
 }
+
+internal sealed record CreatedResponse(Guid Id, string Message);
+
+internal sealed record ProductResponse(Guid Id, string Name, string Sku, decimal Price, int AvailableStock, bool IsDeleted);
+
+internal sealed record PagedResponse<T>(IReadOnlyList<T> Items, int Page, int PageSize, int TotalCount);
+
+internal sealed record ConfirmResult(Guid OrderId, bool IsConfirmed, HttpStatusCode StatusCode);
