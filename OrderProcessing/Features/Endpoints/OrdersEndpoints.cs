@@ -93,6 +93,13 @@ public static class OrdersEndpoints
         }
     }
 
+    [WolverineGet("/api/orders/{id:guid}/inventory-logs")]
+    public static async Task<IResult> GetOrderInventoryLogs(Guid id, IMessageBus bus, CancellationToken ct)
+    {
+        var logs = await bus.InvokeAsync<IReadOnlyList<InventoryLogResponse>>(new GetOrderInventoryLogsQuery(id), ct);
+        return Results.Ok(logs);
+    }
+
     private static async Task<IResult> InvokeOperation<TCommand>(IMessageBus bus, TCommand command, CancellationToken ct)
         where TCommand : notnull
     {

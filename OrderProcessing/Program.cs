@@ -1,6 +1,7 @@
 using JasperFx.Resources;
 using Microsoft.EntityFrameworkCore;
 using OrderProcessing.Application;
+using OrderProcessing.Application.Features;
 using OrderProcessing.Application.Services;
 using OrderProcessing.Infrastructure.Persistence;
 using Wolverine;

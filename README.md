@@ -19,6 +19,12 @@ dotnet build OrderProcessing.sln
 dotnet test OrderProcessing.sln
 ```
 
+Automated integration tests use PostgreSQL. Start DB first:
+```bash
+docker compose -f docker-compose.yml up -d postgres
+dotnet test OrderProcessing.sln
+```
+
 ## Run Locally (Recommended)
 1. Start only PostgreSQL:
 ```bash
@@ -69,6 +75,7 @@ Important:
 - `POST /api/orders`
 - `GET /api/orders`
 - `GET /api/orders/{id}`
+- `GET /api/orders/{id}/inventory-logs`
 - `POST /api/orders/{id}/confirm`
 - `POST /api/orders/{id}/cancel`
 - `POST /api/orders/{id}/pay/initiate`
