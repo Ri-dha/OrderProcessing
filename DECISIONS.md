@@ -23,3 +23,7 @@ Write operations are implemented as Wolverine command handlers. HTTP routing is 
 
 ## 8) PCI Compliance & Payment Gateway Mocking
    In InitiatePaymentCommand, the API accepts raw credit card data (PAN, CVC, Expiry) to perform basic domain validation (Luhn algorithm, expiry checks). I acknowledge this is a severe PCI DSS compliance violation in a production environment. In a real-world scenario, the backend API should never touch raw card data. Instead, I would implement a Tokenization pattern (e.g., Stripe or Braintree) where the frontend exchanges raw card data for a secure, single-use token directly with the gateway, and the API only processes that token. I chose to accept raw card data here strictly to fulfill the assessment's requirement of demonstrating rich domain validation and simulating a gateway.
+   
+## 9) The challenges I face with working with wolverine and how I overcome them
+I fully utilized Wolverine's transactional middleware to eliminate SaveChangesAsync() from my core command handlers, ensuring my database updates and Outbox events commit atomically. The only places I explicitly call SaveChanges are inside my Idempotency handlers to catch Unique Constraint violations in-flight, and inside my terminal background event consumers to safely commit side effects.
+(I ALOSO DISCOVERED NAMING MY HANDLERS CLASS WITH AN "S" AT THE END MAKES THEM NOT WORK LOL)
