@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using OrderProcessing.Application.Features.Contracts;
 using OrderProcessing.Domain.entities;
@@ -13,15 +14,25 @@ namespace OrderProcessing.Application.Features;
 
 public class OrderCommandHandler
 {
+    private readonly ILogger<OrderCommandHandler> _logger;
+
+    public OrderCommandHandler(ILogger<OrderCommandHandler> logger)
+    {
+        _logger = logger;
+    }
+    
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<PagedResponse<ProductResponse>> Handle(GetProductsQuery query, AppDbContext db, CancellationToken ct)
     {
+        _logger.LogInformation("Handling GetProductsQuery with page {Page} and pageSize {PageSize}", query.Page, query.PageSize);
+
         var page = query.Page ?? 1;
         var requestedPageSize = query.PageSize ?? 20;
 
         if (page <= 0 || requestedPageSize <= 0)
         {
+            _logger.LogWarning("Invalid page or pageSize provided. page: {Page}, pageSize: {PageSize}", page, requestedPageSize);
             throw new DomainValidationException("page and pageSize must be greater than 0.");
         }
 
@@ -41,11 +52,13 @@ public class OrderCommandHandler
 
     public async Task<PagedResponse<OrderSummaryResponse>> Handle(GetOrdersQuery query, AppDbContext db, CancellationToken ct)
     {
+        _logger.LogInformation("Handling GetOrdersQuery with page {Page} and pageSize {PageSize}", query.Page, query.PageSize);
         var page = query.Page ?? 1;
         var requestedPageSize = query.PageSize ?? 20;
 
         if (page <= 0 || requestedPageSize <= 0)
         {
+            _logger.LogWarning("Invalid page or pageSize provided. page: {Page}, pageSize: {PageSize}", page, requestedPageSize);
             throw new DomainValidationException("page and pageSize must be greater than 0.");
         }
 
@@ -71,6 +84,7 @@ public class OrderCommandHandler
 
     public async Task<OrderDetailsResponse?> Handle(GetOrderByIdQuery query, AppDbContext db, CancellationToken ct)
     {
+        _logger.LogInformation("Handling GetOrderByIdQuery with orderId {OrderId}", query.OrderId);
         var order = await db.Orders
             .AsNoTracking()
             .Include(x => x.Items)
@@ -78,6 +92,7 @@ public class OrderCommandHandler
 
         if (order is null)
         {
+            _logger.LogWarning("Order not found with orderId {OrderId}", query.OrderId);
             return null;
         }
 
@@ -92,6 +107,7 @@ public class OrderCommandHandler
     public async Task<IReadOnlyList<InventoryLogResponse>> Handle(GetOrderInventoryLogsQuery query, AppDbContext db,
         CancellationToken ct)
     {
+        _logger.LogInformation("Handling GetOrderInventoryLogsQuery with orderId {OrderId}", query.OrderId);
         return await db.InventoryLogs
             .AsNoTracking()
             .Where(x => x.OrderId == query.OrderId)
@@ -108,12 +124,14 @@ public class OrderCommandHandler
 
     public async Task<VerifyPaymentResult> Handle(PollPaymentVerificationStatusQuery query, AppDbContext db, CancellationToken ct)
     {
+        _logger.LogInformation("Handling PollPaymentVerificationStatusQuery with orderId {OrderId} and idempotencyKey {IdempotencyKey}", query.OrderId, query.IdempotencyKey);
         var record = await db.IdempotencyRecords
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.OrderId == query.OrderId && x.Key == query.IdempotencyKey, ct);
 
         if (record is null)
         {
+            _logger.LogWarning("Idempotency record not found for orderId {OrderId} and idempotencyKey {IdempotencyKey}", query.OrderId, query.IdempotencyKey);
             return new VerifyPaymentResult(404, null, "Idempotency key not found for this order.");
         }
 
@@ -124,12 +142,14 @@ public class OrderCommandHandler
 
         if (!record.ResponseStatusCode.HasValue || string.IsNullOrWhiteSpace(record.ResponseBody))
         {
+            _logger.LogWarning("Stored payment response is incomplete for orderId {OrderId} and idempotencyKey {IdempotencyKey}", query.OrderId, query.IdempotencyKey);
             return new VerifyPaymentResult(500, null, "Stored payment response is incomplete.");
         }
 
         var response = JsonSerializer.Deserialize<PaymentResponse>(record.ResponseBody!, JsonOptions);
         if (response is null)
         {
+            _logger.LogWarning("Stored payment response is invalid for orderId {OrderId} and idempotencyKey {IdempotencyKey}", query.OrderId, query.IdempotencyKey);
             return new VerifyPaymentResult(500, null, "Stored payment response is invalid.");
         }
 
@@ -138,9 +158,11 @@ public class OrderCommandHandler
 
     public async Task<CreatedResponse> Handle(CreateProductCommand command, AppDbContext db, CancellationToken ct)
     {
+        _logger.LogInformation("Handling CreateProductCommand with name {Name}", command.Name);
         var product = new Product(command.Name, command.Sku, command.Price, command.InitialStock);
         db.Products.Add(product);
         await db.SaveChangesAsync(ct);
+        _logger.LogInformation("Product created with id {Id} and name {Name}", product.Id, product.Name);
         return new CreatedResponse(product.Id, "Product created.");
     }
 

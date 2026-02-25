@@ -55,6 +55,20 @@ How to use it:
 5. Click `Execute`.
 6. Use returned IDs in next endpoints (order/payment flow).
 
+## Structured Logging and Correlation ID
+The API uses Serilog with request correlation.
+
+- Request header: `X-Correlation-ID`
+- If provided by client, it is reused.
+- If not provided, the API generates one and returns it in the response header.
+- The same correlation ID appears in HTTP logs, application logs, and EF Core DB command logs.
+
+Example request with explicit correlation ID:
+```bash
+curl -X POST "http://localhost:5203/api/orders/{id}/confirm" \\
+  -H "X-Correlation-ID: demo-trace-001"
+```
+
 ## Run with Docker (API + DB)
 ```bash
 docker compose -f docker-compose.yml up --build
