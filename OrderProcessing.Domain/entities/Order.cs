@@ -11,7 +11,7 @@ public class Order : IEntity, IAuditableEntity, ISoftDeletable
         {
             [OrderStatus.Draft] = [OrderStatus.Confirmed, OrderStatus.Cancelled],
             [OrderStatus.Confirmed] = [OrderStatus.PaymentPending, OrderStatus.Cancelled,OrderStatus.PaymentFailed],
-            [OrderStatus.PaymentPending] = [OrderStatus.Paid, OrderStatus.PaymentFailed],
+            [OrderStatus.PaymentPending] = [OrderStatus.Paid, OrderStatus.PaymentFailed, OrderStatus.Cancelled],
             [OrderStatus.Paid] = [OrderStatus.Fulfilling],
             [OrderStatus.Fulfilling] = [OrderStatus.Shipped],
             [OrderStatus.Shipped] = [OrderStatus.Delivered],
