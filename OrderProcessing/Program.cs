@@ -31,6 +31,7 @@ builder.Host.UseWolverine(opts =>
 });
 
 builder.Services.AddHostedService<IdempotencyCleanupService>();
+builder.Services.AddHostedService<OrderExpiryService>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
