@@ -161,7 +161,7 @@ public class OrderCommandHandler
         _logger.LogInformation("Handling CreateProductCommand with name {Name}", command.Name);
         var product = new Product(command.Name, command.Sku, command.Price, command.InitialStock);
         db.Products.Add(product);
-        await db.SaveChangesAsync(ct);
+        // await db.SaveChangesAsync(ct);
         _logger.LogInformation("Product created with id {Id} and name {Name}", product.Id, product.Name);
         return new CreatedResponse(product.Id, "Product created.");
     }
@@ -178,7 +178,7 @@ public class OrderCommandHandler
             .ToList();
 
         db.Products.AddRange(products);
-        await db.SaveChangesAsync(ct);
+        // await db.SaveChangesAsync(ct);
         return new BulkCreatedResponse(products.Count, products.Select(x => x.Id).ToArray(), "Products created.");
     }
 
@@ -218,7 +218,7 @@ public class OrderCommandHandler
             product.SetDeleted(command.IsDeleted.Value);
         }
 
-        await db.SaveChangesAsync(ct);
+        // await db.SaveChangesAsync(ct);
         return new ProductResponse(product.Id, product.Name, product.Sku, product.Price, product.AvailableStock, product.IsDeleted);
     }
 
