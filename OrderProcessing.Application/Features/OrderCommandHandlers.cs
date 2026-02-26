@@ -161,7 +161,7 @@ public class OrderCommandHandler
         _logger.LogInformation("Handling CreateProductCommand with name {Name}", command.Name);
         var product = new Product(command.Name, command.Sku, command.Price, command.InitialStock);
         db.Products.Add(product);
-        await db.SaveChangesAsync(ct);
+        
         _logger.LogInformation("Product created with id {Id} and name {Name}", product.Id, product.Name);
         return new CreatedResponse(product.Id, "Product created.");
     }
@@ -178,7 +178,7 @@ public class OrderCommandHandler
             .ToList();
 
         db.Products.AddRange(products);
-        await db.SaveChangesAsync(ct);
+        
         return new BulkCreatedResponse(products.Count, products.Select(x => x.Id).ToArray(), "Products created.");
     }
 
@@ -218,7 +218,7 @@ public class OrderCommandHandler
             product.SetDeleted(command.IsDeleted.Value);
         }
 
-        await db.SaveChangesAsync(ct);
+        
         return new ProductResponse(product.Id, product.Name, product.Sku, product.Price, product.AvailableStock, product.IsDeleted);
     }
 
@@ -252,7 +252,7 @@ public class OrderCommandHandler
 
         var order = Order.Create(lines);
         db.Orders.Add(order);
-        await db.SaveChangesAsync(ct);
+        
         return new CreatedResponse(order.Id, "Order created in DRAFT status.");
     }
 
@@ -327,12 +327,12 @@ public class OrderCommandHandler
             }
 
             order.TransitionTo(OrderStatus.Cancelled);
-            await db.SaveChangesAsync(ct);
+            
             return (new OperationResponse("Order cancelled.", order.Id, order.Status.ToString()), messages);
         }
 
         order.TransitionTo(OrderStatus.Cancelled);
-        await db.SaveChangesAsync(ct);
+        
         return (new OperationResponse("Order cancelled.", order.Id, order.Status.ToString()), new OutgoingMessages());
     }
 
@@ -361,7 +361,7 @@ public class OrderCommandHandler
 
         var token = PaymentVerificationToken.Create(order.Id, TimeSpan.FromMinutes(5));
         db.PaymentVerificationTokens.Add(token);
-        await db.SaveChangesAsync(ct);
+        
         return new PaymentInitiationResponse(
             order.Id,
             order.Status.ToString(),
@@ -546,7 +546,7 @@ public class OrderCommandHandler
             messages.Add(new FulfillmentCommittedEvent(item.ProductId, order.Id, item.Quantity));
         }
 
-        await db.SaveChangesAsync(ct);
+        
         return (new OperationResponse("Order is now fulfilling.", order.Id, order.Status.ToString()), messages);
     }
 
@@ -560,7 +560,7 @@ public class OrderCommandHandler
 
         order.TransitionTo(OrderStatus.Shipped);
         order.SetTrackingNumber(command.TrackingNumber);
-        await db.SaveChangesAsync(ct);
+        
         return new OperationResponse("Order shipped.", order.Id, order.Status.ToString());
     }
 
@@ -573,7 +573,7 @@ public class OrderCommandHandler
         }
 
         order.TransitionTo(OrderStatus.Delivered);
-        await db.SaveChangesAsync(ct);
+        
         return new OperationResponse("Order delivered.", order.Id, order.Status.ToString());
     }
 
@@ -586,7 +586,7 @@ public class OrderCommandHandler
         }
 
         order.TransitionTo(OrderStatus.RefundRequested);
-        await db.SaveChangesAsync(ct);
+        
         return new OperationResponse("Refund requested.", order.Id, order.Status.ToString());
     }
 
@@ -623,7 +623,7 @@ public class OrderCommandHandler
             messages.Add(new StockRestockedEvent(product.Id, order.Id, item.Quantity));
         }
 
-        await db.SaveChangesAsync(ct);
+        
         return (new OperationResponse("Refund completed.", order.Id, order.Status.ToString()), messages);
     }
 
