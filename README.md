@@ -141,4 +141,4 @@ Each run writes:
 
 ## Video Walkthrough
 Add your video link here:
-- `<PASTE-LOOM-OR-YOUTUBE-LINK>`
+- `<https://youtu.be/t_GKJQdQnXE>`
