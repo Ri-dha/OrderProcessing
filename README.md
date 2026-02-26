@@ -8,10 +8,10 @@
 
 ## Prerequisites
 - .NET SDK 10 (`dotnet --info`)
-- Docker Desktop (for PostgreSQL or full compose run)
+- Docker setup (for PostgreSQL or full compose run)
 
 ## Build
-From `/Users/ridhatareq/Documents/c# projects/untitled folder/OrderProcessing`:
+From `/OrderProcessing`:
 
 ```bash
 dotnet restore OrderProcessing.sln
@@ -141,4 +141,4 @@ Each run writes:
 
 ## Video Walkthrough
 Add your video link here:
-- `<PASTE-LOOM-OR-YOUTUBE-LINK>`
+- `<https://youtu.be/t_GKJQdQnXE>`
